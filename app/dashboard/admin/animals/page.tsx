@@ -296,71 +296,133 @@ export default function AdminAnimalsPage() {
             If dropdowns show a warning, Ixorigue metadata could not be loaded — check API credentials and the server terminal for <code className="rounded bg-slate-100 px-1">[Ixorigue]</code> logs.
           </p>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              {ranches.map((ranch) => (
-                <option key={ranch._id} value={ranch._id}>{ranch.name}</option>
-              ))}
-            </select>
-            <select value={lotId} onChange={(event) => setLotId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="">Select lot</option>
-              {lots.map((lot) => (
-                <option key={lot._id} value={lot._id}>{lot.name}</option>
-              ))}
-            </select>
+          <div className="mt-4 grid gap-4">
+            <section className="rounded-2xl border border-slate-200 p-4">
+              <div className="mb-4">
+                <h2 className="text-base font-semibold text-slate-900">Required fields</h2>
+                <p className="text-sm text-slate-500">These are the fields directly tied to Pastora and the base sync workflow.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Ranch</span>
+                  <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    {ranches.map((ranch) => (
+                      <option key={ranch._id} value={ranch._id}>{ranch.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-            <select value={form.specie} onChange={(event) => setForm((current) => ({ ...current, specie: event.target.value, breed: "" }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              {metadata.specieOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Animal name" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Lot</span>
+                  <select value={lotId} onChange={(event) => setLotId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <option value="">Select lot</option>
+                    {lots.map((lot) => (
+                      <option key={lot._id} value={lot._id}>{lot.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-            <input list="ear-tag-options" value={form.earTagNumber} onChange={(event) => setForm((current) => ({ ...current, earTagNumber: event.target.value }))} placeholder="Animal ID / ear tag" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <datalist id="ear-tag-options">
-              {metadata.earTagOptions.map((earTag) => (
-                <option key={earTag} value={earTag} />
-              ))}
-            </datalist>
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Specie</span>
+                  <select value={form.specie} onChange={(event) => setForm((current) => ({ ...current, specie: event.target.value, breed: "" }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    {metadata.specieOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
 
-            <select value={form.sex} onChange={(event) => setForm((current) => ({ ...current, sex: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              {metadata.sexOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Animal ID / ear tag</span>
+                  <input list="ear-tag-options" value={form.earTagNumber} onChange={(event) => setForm((current) => ({ ...current, earTagNumber: event.target.value }))} placeholder="Enter ear tag" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                  <datalist id="ear-tag-options">
+                    {metadata.earTagOptions.map((earTag) => (
+                      <option key={earTag} value={earTag} />
+                    ))}
+                  </datalist>
+                </label>
 
-            <div className="grid gap-2">
-              <input list="breed-options" value={form.breed} onChange={(event) => setForm((current) => ({ ...current, breed: event.target.value }))} placeholder="Breed" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-              <datalist id="breed-options">
-                {breedOptions.map((breed) => (
-                  <option key={breed} value={breed} />
-                ))}
-              </datalist>
-              <p className="text-xs text-slate-500">Breed is optional. Suggestions come from animals already synced in this ranch.</p>
-            </div>
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Sex</span>
+                  <select value={form.sex} onChange={(event) => setForm((current) => ({ ...current, sex: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    {metadata.sexOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
 
-            <select value={form.deviceId} onChange={(event) => setForm((current) => ({ ...current, deviceId: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="">No device</option>
-              {metadata.deviceOptions.map((device) => (
-                <option key={device.value} value={device.value} disabled={device.disabled}>
-                  {device.label}{device.assignedAnimalLabel ? ` · assigned to ${device.assignedAnimalLabel}` : ""}
-                </option>
-              ))}
-            </select>
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">{form.dateType === "birth" ? "Birth date" : "Purchase date"}</span>
+                  <div className="grid gap-3 sm:grid-cols-[180px,1fr]">
+                    <select value={form.dateType} onChange={(event) => setForm((current) => ({ ...current, dateType: event.target.value as "birth" | "purchase", dateValue: "" }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                      <option value="birth">Birth date</option>
+                      <option value="purchase">Purchase date</option>
+                    </select>
+                    <input type="date" value={form.dateValue} onChange={(event) => setForm((current) => ({ ...current, dateValue: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                  </div>
+                </label>
+              </div>
+            </section>
 
-            <select value={form.dateType} onChange={(event) => setForm((current) => ({ ...current, dateType: event.target.value as "birth" | "purchase", dateValue: "" }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="birth">Birth date</option>
-              <option value="purchase">Purchase date</option>
-            </select>
-            <input type="date" value={form.dateValue} onChange={(event) => setForm((current) => ({ ...current, dateValue: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            <section className="rounded-2xl border border-slate-200 p-4">
+              <div className="mb-4">
+                <h2 className="text-base font-semibold text-slate-900">Optional fields</h2>
+                <p className="text-sm text-slate-500">Additional attributes, media and enrichment fields for this animal.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Animal name</span>
+                  <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Optional animal name" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
 
-            <input value={form.initialWeight} onChange={(event) => setForm((current) => ({ ...current, initialWeight: event.target.value }))} placeholder="Initial weight (optional)" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} placeholder="Color (optional)" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Breed</span>
+                  <input list="breed-options" value={form.breed} onChange={(event) => setForm((current) => ({ ...current, breed: event.target.value }))} placeholder="Optional breed" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                  <datalist id="breed-options">
+                    {breedOptions.map((breed) => (
+                      <option key={breed} value={breed} />
+                    ))}
+                  </datalist>
+                  <span className="text-xs text-slate-500">Suggestions come from animals already synced in this ranch.</span>
+                </label>
 
-            <input value={form.brandNumber} onChange={(event) => setForm((current) => ({ ...current, brandNumber: event.target.value }))} placeholder="Brand number (optional)" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <input type="file" accept="image/*" onChange={(event) => setForm((current) => ({ ...current, photo: event.target.files?.[0] ?? null }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Device</span>
+                  <select value={form.deviceId} onChange={(event) => setForm((current) => ({ ...current, deviceId: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <option value="">No device</option>
+                    {metadata.deviceOptions.map((device) => (
+                      <option key={device.value} value={device.value} disabled={device.disabled}>
+                        {device.label}{device.assignedAnimalLabel ? ` · assigned to ${device.assignedAnimalLabel}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <input type="file" accept="video/*" onChange={(event) => setForm((current) => ({ ...current, video: event.target.files?.[0] ?? null }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2" />
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Initial weight</span>
+                  <input value={form.initialWeight} onChange={(event) => setForm((current) => ({ ...current, initialWeight: event.target.value }))} placeholder="Optional initial weight" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Color</span>
+                  <input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} placeholder="Optional color" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Brand number</span>
+                  <input value={form.brandNumber} onChange={(event) => setForm((current) => ({ ...current, brandNumber: event.target.value }))} placeholder="Optional brand number" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Photo</span>
+                  <input type="file" accept="image/*" onChange={(event) => setForm((current) => ({ ...current, photo: event.target.files?.[0] ?? null }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+
+                <label className="grid gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-900">Video</span>
+                  <input type="file" accept="video/*" onChange={(event) => setForm((current) => ({ ...current, video: event.target.files?.[0] ?? null }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+              </div>
+            </section>
           </div>
 
           {metadata.remoteError ? <p className="mt-3 text-sm text-amber-700">Ixorigue dropdown fetch warning: {metadata.remoteError}</p> : null}

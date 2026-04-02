@@ -67,6 +67,7 @@ export default function AdminRanchesPage() {
   const [mapData, setMapData] = useState<MapResponse | null>(null);
   const [message, setMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [reassignOwnerId, setReassignOwnerId] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -103,6 +104,7 @@ export default function AdminRanchesPage() {
       if (ranchesRes.ok) {
         const ranchesData = (await ranchesRes.json()) as { ranches: RanchRow[] };
         setRanches(ranchesData.ranches);
+        setReassignOwnerId((current) => current || ranchesData.ranches[0]?.ownerUserId || "");
       }
     }
 
@@ -179,6 +181,26 @@ export default function AdminRanchesPage() {
     setBusyAction(null);
   }
 
+  async function moveRanchToUser() {
+    const ranch = ranches.find((item) => item._id === selectedRanchId);
+    if (!ranch || !reassignOwnerId || !ranch.ixorigueRanchId) {
+      return;
+    }
+    setBusyAction("reassign");
+    const response = await fetch("/api/admin/ranches/assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerUserId: reassignOwnerId, ixorigueRanchId: ranch.ixorigueRanchId }),
+    });
+    const data = (await response.json()) as { error?: string; ranch?: { _id: string } };
+    setMessage(response.ok ? "Ranch moved to the selected user." : data.error ?? "Ranch move failed.");
+    if (response.ok) {
+      setSelectedUserId(reassignOwnerId);
+      await refreshRanches(data.ranch?._id ?? selectedRanchId);
+    }
+    setBusyAction(null);
+  }
+
   async function runSync(action: "sync-lots" | "sync-animals" | "sync-remote") {
     if (!selectedRanchId) {
       return;
@@ -213,6 +235,10 @@ export default function AdminRanchesPage() {
   const visibleLots = details?.lots ?? [];
   const visibleAnimals = selectedLotId ? (details?.animals ?? []).filter((animal) => animal.lotId === selectedLotId) : (details?.animals ?? []);
   const selectedLot = visibleLots.find((lot) => lot._id === selectedLotId) ?? null;
+  const ranchCountByUser = ranches.reduce<Record<string, number>>((acc, ranch) => {
+    acc[ranch.ownerUserId] = (acc[ranch.ownerUserId] ?? 0) + 1;
+    return acc;
+  }, {});
   const mapLots = (mapData?.lots ?? [])
     .filter((lot) => lot.geometry)
     .map((lot) => ({
@@ -271,8 +297,15 @@ export default function AdminRanchesPage() {
               <div className="mt-3 space-y-2">
                 {users.map((user) => (
                   <button key={user._id} type="button" onClick={() => setSelectedUserId(user._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selectedUserId === user._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                    <p className="font-medium text-slate-900">{user.name ?? user.email}</p>
-                    <p className="text-slate-500">{user.email}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-900">{user.name ?? user.email}</p>
+                        <p className="text-slate-500">{user.email}</p>
+                      </div>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                        {ranchCountByUser[user._id] ?? 0} ranches
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -303,6 +336,14 @@ export default function AdminRanchesPage() {
                   <p className="text-sm text-slate-600">{details?.owner?.name ?? details?.owner?.email ?? "No owner"} · {details?.ranch.ixorigueRanchId ?? "No Ixorigue link"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <select value={reassignOwnerId} onChange={(event) => setReassignOwnerId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    {users.map((user) => (
+                      <option key={user._id} value={user._id}>{user.name ?? user.email}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => void moveRanchToUser()} disabled={!selectedRanchId || !reassignOwnerId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+                    {busyAction === "reassign" ? "Moving..." : "Assign to another user"}
+                  </button>
                   <button type="button" onClick={() => void runSync("sync-lots")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync lots</button>
                   <button type="button" onClick={() => void runSync("sync-animals")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync animals</button>
                   <button type="button" onClick={() => void runSync("sync-remote")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">Sync all</button>

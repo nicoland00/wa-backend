@@ -43,8 +43,11 @@ type Animal = {
 
 type ImportItem = {
   _id: string;
+  ranchId: string;
   lotId: string | null;
   filename: string;
+  mimeType: string | null;
+  sizeBytes?: number | null;
   status: string;
   createdAt: string;
 };
@@ -66,10 +69,6 @@ export default function DashboardPage() {
   const [selectedLotId, setSelectedLotId] = useState("");
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [imports, setImports] = useState<ImportItem[]>([]);
-  const [selectedAnimalId, setSelectedAnimalId] = useState("");
-  const [weightValue, setWeightValue] = useState("");
-  const [issueMessage, setIssueMessage] = useState("");
-  const [feedback, setFeedback] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -83,27 +82,26 @@ export default function DashboardPage() {
     }
 
     async function loadRanches() {
-      if (session?.user.role === "admin") {
-        const response = await fetch("/api/admin/ranches", { cache: "no-store" });
-        if (!response.ok) {
-          return;
-        }
-        const data = (await response.json()) as { ranches: Ranch[] };
-        setRanches(data.ranches);
-        setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
-        return;
-      }
-
-      const response = await fetch("/api/my/ranch", { cache: "no-store" });
+      const response = await fetch("/api/admin/ranches", { cache: "no-store" });
       if (!response.ok) {
         return;
       }
-      const data = (await response.json()) as { ranch: Ranch | null };
-      setRanches(data.ranch ? [data.ranch] : []);
-      setSelectedRanchId(data.ranch?._id ?? "");
+      const data = (await response.json()) as { ranches: Ranch[] };
+      setRanches(data.ranches);
+      setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
     }
 
-    void loadRanches();
+    async function loadUserRanches() {
+      const response = await fetch("/api/my/ranches", { cache: "no-store" });
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { ranches: Ranch[] };
+      setRanches(data.ranches);
+      setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
+    }
+
+    void (session?.user.role === "admin" ? loadRanches() : loadUserRanches());
   }, [session?.user.role, status]);
 
   useEffect(() => {
@@ -126,7 +124,6 @@ export default function DashboardPage() {
       setSelectedLotId("");
       setAnimals(data.animals);
       setImports(data.importsByLot);
-      setSelectedAnimalId((current) => current || data.animals[0]?._id || "");
     }
 
     void loadRanchMap();
@@ -135,7 +132,7 @@ export default function DashboardPage() {
   const selectedLot = lots.find((lot) => lot._id === selectedLotId) ?? null;
   const visibleAnimals = selectedLotId ? animals.filter((animal) => animal.lotId === selectedLotId) : animals;
   const visibleImports = selectedLotId ? imports.filter((item) => item.lotId === selectedLotId) : imports;
-  const selectedAnimal = visibleAnimals.find((animal) => animal._id === selectedAnimalId) ?? visibleAnimals[0] ?? null;
+  const selectedRanch = ranches.find((ranch) => ranch._id === selectedRanchId) ?? null;
 
   const mapLots = useMemo<MapLot[]>(
     () =>
@@ -166,54 +163,6 @@ export default function DashboardPage() {
         })),
     [animals],
   );
-
-  async function refreshMap() {
-    const response = await fetch(`/api/map/ranch/${selectedRanchId}`, { cache: "no-store" });
-    if (!response.ok) {
-      return;
-    }
-    const next = (await response.json()) as MapResponse;
-    setLots(next.lots);
-    setAnimals(next.animals);
-    setImports(next.importsByLot);
-  }
-
-  async function submitWeight() {
-    if (!selectedAnimalId || !weightValue) {
-      return;
-    }
-
-    const response = await fetch(`/api/my/animals/${selectedAnimalId}/weights`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weight: Number(weightValue) }),
-    });
-
-    const data = (await response.json()) as { error?: string };
-    setFeedback(response.ok ? "Weight submitted." : data.error ?? "Weight update failed.");
-    if (response.ok) {
-      setWeightValue("");
-      await refreshMap();
-    }
-  }
-
-  async function submitIssue() {
-    const response = await fetch("/api/my/data-error-requests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ranchId: selectedRanchId || null,
-        lotId: selectedLotId || null,
-        animalId: selectedAnimalId || null,
-        message: issueMessage,
-      }),
-    });
-    const data = (await response.json()) as { error?: string };
-    setFeedback(response.ok ? "Issue reported." : data.error ?? "Failed to report issue.");
-    if (response.ok) {
-      setIssueMessage("");
-    }
-  }
 
   if (status === "loading") {
     return <main className="p-6 text-sm text-slate-600">Loading session...</main>;
@@ -258,101 +207,124 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-10">
-          <div className="lg:col-span-7">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr),360px]">
+          <div className="space-y-4">
             <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={(id) => setSelectedLotId(id)} />
+
+            <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Imports</h2>
+                  <p className="text-sm text-slate-500">
+                    {selectedLotId ? `Files linked to ${selectedLot?.name ?? "selected lot"}` : "Files received across all lots in this ranch"}
+                  </p>
+                </div>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {visibleImports.length} import{visibleImports.length === 1 ? "" : "s"}
+                </div>
+              </div>
+
+              {visibleImports.length ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {visibleImports.map((item) => {
+                    const linkedLot = item.lotId ? lots.find((lot) => lot._id === item.lotId) : null;
+                    const createdAt = new Date(item.createdAt);
+                    return (
+                      <article key={item._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{item.filename}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {linkedLot?.name ?? "Unassigned lot"} · {item.mimeType ?? "Unknown file type"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-600">
+                            {item.status}
+                          </span>
+                        </div>
+                        <div className="mt-4 space-y-1 text-sm text-slate-600">
+                          <p>Received: {Number.isNaN(createdAt.getTime()) ? item.createdAt : createdAt.toLocaleString()}</p>
+                          <p>Size: {item.sizeBytes ? `${(item.sizeBytes / 1024 / 1024).toFixed(2)} MB` : "Unknown"}</p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                  {selectedLotId ? "No imports linked to this lot yet." : "No WhatsApp imports received for this ranch yet."}
+                </div>
+              )}
+            </section>
           </div>
 
-          <aside className="space-y-4 lg:col-span-3">
+          <aside className="space-y-4">
             <section className="rounded-2xl bg-white p-4 shadow-sm">
               <h2 className="text-base font-semibold text-slate-900">Ranch Summary</h2>
               <div className="mt-3 space-y-1 text-sm text-slate-700">
-                  <p>{ranches.find((ranch) => ranch._id === selectedRanchId)?.name ?? "No ranch selected"}</p>
-                  <p>{lots.length} lots cached</p>
-                  <p>{animals.length} animals cached</p>
-                  <p>{mapAnimals.length} animals with coordinates</p>
-                </div>
-              </section>
-
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Selected Lot</h2>
-              {selectedLot ? (
-                <div className="mt-3 space-y-1 text-sm text-slate-700">
-                  <p>{selectedLot.name}</p>
-                  <p>Ixorigue lot: {selectedLot.ixorigueLotId ?? "Local only"}</p>
-                  <p>{selectedLot.animalCount ?? visibleAnimals.length} animals</p>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-slate-500">Showing all ranch animals. Click a lot polygon to filter.</p>
-              )}
-            </section>
-
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Imports</h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                {visibleImports.length ? visibleImports.slice(0, 8).map((item) => <li key={item._id}>{item.filename} · {item.status}</li>) : <li className="text-slate-500">{selectedLotId ? "No imports for this lot." : "No imports in this ranch."}</li>}
-              </ul>
-            </section>
-          </aside>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-slate-900">{selectedLotId ? "Animals by Lot" : "Animals in Ranch"}</h2>
-              <select value={selectedLotId} onChange={(event) => setSelectedLotId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <option value="">All lots</option>
-                {lots.map((lot) => (
-                  <option key={lot._id} value={lot._id}>{lot.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-4 space-y-3">
-              {visibleAnimals.length ? visibleAnimals.map((animal) => (
-                <button key={animal._id} type="button" onClick={() => setSelectedAnimalId(animal._id)} className={`w-full rounded-2xl border p-4 text-left ${selectedAnimalId === animal._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                  <p className="text-sm font-medium text-slate-900">{animal.earTagNumber}</p>
-                  <p className="mt-1 text-sm text-slate-700">{animal.sex} · {animal.breed}</p>
-                  <p className="mt-1 text-sm text-slate-500">{animal.currentWeight} kg · {animal.lifeStatus}</p>
-                </button>
-              )) : <p className="text-sm text-slate-500">{selectedLotId ? "No animals in this lot." : "No animals in this ranch."}</p>}
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Animal Details</h2>
-              {selectedAnimal ? (
-                <div className="mt-3 space-y-2 text-sm text-slate-700">
-                  <p className="font-medium text-slate-900">{selectedAnimal.earTagNumber}</p>
-                  <p>{selectedAnimal.sex} · {selectedAnimal.breed}</p>
-                  <p>Color: {selectedAnimal.color || "Not set"}</p>
-                  <p>Brand: {selectedAnimal.brandNumber || "Not set"}</p>
-                  <p>Current weight: {selectedAnimal.currentWeight} kg</p>
-                  <p>Ixorigue animal: {selectedAnimal.ixorigueAnimalId ?? "Local only"}</p>
-                  {selectedAnimal.photoUrl ? <img src={selectedAnimal.photoUrl} alt={selectedAnimal.earTagNumber} className="h-36 w-36 rounded-xl object-cover" /> : null}
-                  {selectedAnimal.videoUrl ? <a href={selectedAnimal.videoUrl} className="text-blue-700 underline">Open video</a> : null}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-slate-500">Select an animal to see details.</p>
-              )}
-            </section>
-
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Allowed Actions</h2>
-              <div className="mt-3 space-y-3">
-                <input value={weightValue} onChange={(event) => setWeightValue(event.target.value)} placeholder="Weight" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <button type="button" onClick={() => void submitWeight()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">Submit weight</button>
-                {session.user.role !== "admin" ? (
-                  <>
-                    <textarea value={issueMessage} onChange={(event) => setIssueMessage(event.target.value)} placeholder="Describe the problem" className="min-h-28 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                    <button type="button" onClick={() => void submitIssue()} className="rounded-lg bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600">Report data issue</button>
-                  </>
-                ) : null}
+                <p>{selectedRanch?.name ?? "No ranch selected"}</p>
+                <p>{lots.length} lots cached</p>
+                <p>{animals.length} animals cached</p>
+                <p>{mapAnimals.length} animals with coordinates</p>
+                <p>Sync status: {selectedRanch?.syncStatus ?? "unknown"}</p>
               </div>
             </section>
 
-            {feedback ? <p className="rounded-xl bg-white p-3 text-sm text-slate-700 shadow-sm">{feedback}</p> : null}
-          </section>
+            <section className="rounded-2xl bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Selected Lots</h2>
+                  <p className="text-sm text-slate-500">Choose a lot or keep the full ranch view.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {visibleAnimals.length} animals
+                </span>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Lot filter</label>
+                <select value={selectedLotId} onChange={(event) => setSelectedLotId(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <option value="">All lots</option>
+                  {lots.map((lot) => (
+                    <option key={lot._id} value={lot._id}>{lot.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLotId("")}
+                  className={`w-full rounded-2xl border p-4 text-left ${selectedLotId === "" ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"}`}
+                >
+                  <p className="text-sm font-semibold text-slate-900">All lots</p>
+                  <p className="mt-1 text-sm text-slate-500">{animals.length} animals across the ranch</p>
+                </button>
+
+                {lots.map((lot) => {
+                  const lotAnimals = animals.filter((animal) => animal.lotId === lot._id);
+                  return (
+                    <button
+                      key={lot._id}
+                      type="button"
+                      onClick={() => setSelectedLotId(lot._id)}
+                      className={`w-full rounded-2xl border p-4 text-left ${selectedLotId === lot._id ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{lot.name}</p>
+                          <p className="mt-1 text-sm text-slate-500">Ixorigue: {lot.ixorigueLotId ?? "Local only"}</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                          {lot.animalCount ?? lotAnimals.length}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </aside>
         </section>
       </div>
     </main>

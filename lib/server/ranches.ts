@@ -21,32 +21,26 @@ export async function assignExistingRanchToUser(params: {
     throw new Error("Owner user not found");
   }
 
-  const ownerAssignment = await db.collection<RanchDoc>("ranches").findOne({ ownerUserId: ownerObjectId });
   const ranchAssignment = await db.collection<RanchDoc>("ranches").findOne({ ixorigueRanchId: params.ixorigueRanchId });
   const now = new Date();
 
-  if (ownerAssignment && ranchAssignment && ownerAssignment._id.toString() !== ranchAssignment._id.toString()) {
-    throw new Error("Assignment conflict: this user and remote ranch are already linked to different local records");
-  }
-
-  const target = ownerAssignment ?? ranchAssignment;
-  if (target) {
+  if (ranchAssignment) {
     await db.collection<RanchDoc>("ranches").updateOne(
-      { _id: target._id },
+      { _id: ranchAssignment._id },
       {
         $set: {
           ownerUserId: ownerObjectId,
-          name: remoteRanch.name?.trim() || target.name,
+          name: remoteRanch.name?.trim() || ranchAssignment.name,
           ixorigueRanchId: remoteRanch.id,
           syncStatus: "synced",
           syncError: null,
-          createdByAdminUserId: target.createdByAdminUserId ?? adminObjectId,
+          createdByAdminUserId: ranchAssignment.createdByAdminUserId ?? adminObjectId,
           updatedAt: now,
         },
       },
     );
 
-    return db.collection<RanchDoc>("ranches").findOne({ _id: target._id });
+    return db.collection<RanchDoc>("ranches").findOne({ _id: ranchAssignment._id });
   }
 
   const ranchDoc: Omit<RanchDoc, "_id"> = {
