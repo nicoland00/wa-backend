@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
 
 type Ranch = { _id: string; name: string };
 type Lot = { _id: string; ranchId: string; name: string };
@@ -57,6 +58,8 @@ export default function AdminAnimalsPage() {
   const [syncing, setSyncing] = useState(false);
   const [weightModal, setWeightModal] = useState<Animal | null>(null);
   const [weightInput, setWeightInput] = useState("");
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
+  const canManage = session ? canMutateAdminData(session.user.role) : false;
   const [form, setForm] = useState({
     specie: "cow",
     breed: "",
@@ -80,7 +83,7 @@ export default function AdminAnimalsPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") {
+    if (status !== "authenticated" || !canView) {
       return;
     }
 
@@ -96,7 +99,7 @@ export default function AdminAnimalsPage() {
     }
 
     void loadRanches();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   useEffect(() => {
     async function loadLots() {
@@ -276,7 +279,7 @@ export default function AdminAnimalsPage() {
   if (status === "loading") {
     return <main className="p-6 text-sm text-slate-600">Loading...</main>;
   }
-  if (session?.user.role !== "admin") {
+  if (!canView) {
     return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
   }
 
@@ -290,13 +293,19 @@ export default function AdminAnimalsPage() {
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Animals</h1>
           <p className="mt-1 text-sm text-slate-600">Create animals with the same core fields Ixorigue requires so sync succeeds on first submit.</p>
+          {!canManage ? (
+            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Institutional users can review ranch animals and sync status here, but animal creation and edit actions remain admin-only.
+            </p>
+          ) : null}
           <p className="mt-2 text-xs text-slate-500">
             After create, the backend registers the animal in Ixorigue and <strong>adds it to the selected lot</strong> so it appears in the Ixorigue app under that lot.
             If sync fails, read the error in the table; use <strong>Retry sync</strong>. The <strong>Ixorigue ID</strong> column shows the remote GUID when sync succeeded (search the animal in Ixorigue by ranch).
             If dropdowns show a warning, Ixorigue metadata could not be loaded — check API credentials and the server terminal for <code className="rounded bg-slate-100 px-1">[Ixorigue]</code> logs.
           </p>
 
-          <div className="mt-4 grid gap-4">
+          {canManage ? (
+            <div className="mt-4 grid gap-4">
             <section className="rounded-2xl border border-slate-200 p-4">
               <div className="mb-4">
                 <h2 className="text-base font-semibold text-slate-900">Required fields</h2>
@@ -423,18 +432,25 @@ export default function AdminAnimalsPage() {
                 </label>
               </div>
             </section>
-          </div>
+            </div>
+          ) : null}
 
           {metadata.remoteError ? <p className="mt-3 text-sm text-amber-700">Ixorigue dropdown fetch warning: {metadata.remoteError}</p> : null}
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void createAnimal()} disabled={!lotId} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
-              Create animal
-            </button>
-            <button type="button" onClick={() => void syncRemoteAnimals()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-              {syncing ? "Syncing..." : "Pull remote animals"}
-            </button>
+            {canManage ? (
+              <>
+                <button type="button" onClick={() => void createAnimal()} disabled={!lotId} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
+                  Create animal
+                </button>
+                <button type="button" onClick={() => void syncRemoteAnimals()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+                  {syncing ? "Syncing..." : "Pull remote animals"}
+                </button>
+              </>
+            ) : (
+              <span className="text-sm text-slate-500">Read only</span>
+            )}
           </div>
         </section>
 
@@ -468,11 +484,15 @@ export default function AdminAnimalsPage() {
                     </td>
                     <td className="px-3 py-2">{animal.syncStatus}{animal.syncError ? ` · ${animal.syncError}` : ""}</td>
                     <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => { setWeightModal(animal); setWeightInput(""); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Add weight</button>
-                        <button type="button" onClick={() => void retrySync(animal._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Retry sync</button>
-                        <button type="button" onClick={() => void deleteAnimal(animal._id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50">Delete</button>
-                      </div>
+                      {canManage ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => { setWeightModal(animal); setWeightInput(""); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Add weight</button>
+                          <button type="button" onClick={() => void retrySync(animal._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Retry sync</button>
+                          <button type="button" onClick={() => void deleteAnimal(animal._id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50">Delete</button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Read only</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -481,7 +501,7 @@ export default function AdminAnimalsPage() {
           </div>
         </section>
 
-        {weightModal ? (
+        {canManage && weightModal ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setWeightModal(null)}>
             <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg" onClick={(event) => event.stopPropagation()}>
               <h2 className="text-lg font-semibold text-slate-900">Add weight</h2>

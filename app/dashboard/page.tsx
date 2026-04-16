@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import MapView from "@/components/MapView";
+import { canViewAdminScreens } from "@/lib/permissions";
 import type { Lot as MapLot } from "@/lib/api";
 
 type Ranch = {
@@ -28,6 +29,7 @@ type Lot = {
 type Animal = {
   _id: string;
   lotId: string;
+  name?: string | null;
   sex: string;
   breed: string;
   color: string;
@@ -70,6 +72,8 @@ export default function DashboardPage() {
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [imports, setImports] = useState<ImportItem[]>([]);
 
+  const hasAdminAccess = session ? canViewAdminScreens(session.user.role) : false;
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
@@ -86,6 +90,7 @@ export default function DashboardPage() {
       if (!response.ok) {
         return;
       }
+
       const data = (await response.json()) as { ranches: Ranch[] };
       setRanches(data.ranches);
       setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
@@ -96,13 +101,14 @@ export default function DashboardPage() {
       if (!response.ok) {
         return;
       }
+
       const data = (await response.json()) as { ranches: Ranch[] };
       setRanches(data.ranches);
       setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
     }
 
-    void (session?.user.role === "admin" ? loadRanches() : loadUserRanches());
-  }, [session?.user.role, status]);
+    void (hasAdminAccess ? loadRanches() : loadUserRanches());
+  }, [hasAdminAccess, status]);
 
   useEffect(() => {
     async function loadRanchMap() {
@@ -121,7 +127,7 @@ export default function DashboardPage() {
 
       const data = (await response.json()) as MapResponse;
       setLots(data.lots);
-      setSelectedLotId("");
+      setSelectedLotId((current) => (data.lots.some((lot) => lot._id === current) ? current : ""));
       setAnimals(data.animals);
       setImports(data.importsByLot);
     }
@@ -129,10 +135,15 @@ export default function DashboardPage() {
     void loadRanchMap();
   }, [selectedRanchId]);
 
+  const selectedRanch = ranches.find((ranch) => ranch._id === selectedRanchId) ?? null;
   const selectedLot = lots.find((lot) => lot._id === selectedLotId) ?? null;
   const visibleAnimals = selectedLotId ? animals.filter((animal) => animal.lotId === selectedLotId) : animals;
   const visibleImports = selectedLotId ? imports.filter((item) => item.lotId === selectedLotId) : imports;
-  const selectedRanch = ranches.find((ranch) => ranch._id === selectedRanchId) ?? null;
+
+  const lotById = useMemo(
+    () => new Map(lots.map((lot) => [lot._id, lot])),
+    [lots],
+  );
 
   const mapLots = useMemo<MapLot[]>(
     () =>
@@ -156,12 +167,16 @@ export default function DashboardPage() {
           animalId: animal._id,
           lotId: animal.lotId,
           earTagNumber: animal.earTagNumber,
+          lotName: lotById.get(animal.lotId)?.name ?? "Unknown lot",
+          breed: animal.breed,
+          sex: animal.sex,
+          currentWeight: animal.currentWeight,
           coordinates: {
             lat: animal.coordinates!.lat,
             lng: animal.coordinates!.lng,
           },
         })),
-    [animals],
+    [animals, lotById],
   );
 
   if (status === "loading") {
@@ -181,29 +196,70 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-xl font-semibold text-slate-900">Pastora Dashboard</h1>
               <p className="text-sm text-slate-600">{session.user.email} · {session.user.role}</p>
+              {session.user.role === "institutional" ? (
+                <p className="mt-1 text-xs text-slate-500">Institutional access is read-only across the admin workspace.</p>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link href="/dashboard/profile" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
-              {session.user.role === "admin" ? (
+              {hasAdminAccess ? (
                 <>
                   <Link href="/dashboard/admin/users" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Users</Link>
+                  <Link href="/dashboard/admin/phones" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Phones</Link>
                   <Link href="/dashboard/admin/ranches" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Ranches</Link>
                   <Link href="/dashboard/admin/lots" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Lots</Link>
                   <Link href="/dashboard/admin/animals" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Animals</Link>
+                  <Link href="/dashboard/admin/data-error-requests" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Data Errors</Link>
+                  <Link href="/dashboard/admin/sync-jobs" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Sync Jobs</Link>
+                  <Link href="/dashboard/admin/ixorigue" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Ixorigue</Link>
                 </>
               ) : null}
               <button type="button" onClick={() => void signOut({ callbackUrl: "/login" })} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700">Sign out</button>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="text-sm text-slate-600">Ranch</label>
-            <select value={selectedRanchId} onChange={(event) => setSelectedRanchId(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-              {ranches.map((ranch) => (
-                <option key={ranch._id} value={ranch._id}>{ranch.name} · {ranch.syncStatus}</option>
-              ))}
-            </select>
+          <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(220px,280px),minmax(220px,280px),1fr]">
+            <label className="grid gap-2 text-sm text-slate-600">
+              <span className="font-medium text-slate-700">Ranch</span>
+              <select value={selectedRanchId} onChange={(event) => setSelectedRanchId(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                {ranches.map((ranch) => (
+                  <option key={ranch._id} value={ranch._id}>{ranch.name} · {ranch.syncStatus}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-2 text-sm text-slate-600">
+              <span className="font-medium text-slate-700">Lot</span>
+              <select value={selectedLotId} onChange={(event) => setSelectedLotId(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="">All lots</option>
+                {lots.map((lot) => (
+                  <option key={lot._id} value={lot._id}>{lot.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ranch Summary</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <p className="text-xs text-slate-500">Ranch</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedRanch?.name ?? "No ranch selected"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Lot</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedLot?.name ?? "All lots"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Animals</p>
+                  <p className="text-sm font-medium text-slate-900">{visibleAnimals.length}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Sync status</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedRanch?.syncStatus ?? "unknown"}</p>
+                </div>
+              </div>
+            </section>
           </div>
         </header>
 
@@ -227,7 +283,7 @@ export default function DashboardPage() {
               {visibleImports.length ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {visibleImports.map((item) => {
-                    const linkedLot = item.lotId ? lots.find((lot) => lot._id === item.lotId) : null;
+                    const linkedLot = item.lotId ? lotById.get(item.lotId) : null;
                     const createdAt = new Date(item.createdAt);
                     return (
                       <article key={item._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -260,69 +316,78 @@ export default function DashboardPage() {
 
           <aside className="space-y-4">
             <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Ranch Summary</h2>
-              <div className="mt-3 space-y-1 text-sm text-slate-700">
-                <p>{selectedRanch?.name ?? "No ranch selected"}</p>
-                <p>{lots.length} lots cached</p>
-                <p>{animals.length} animals cached</p>
-                <p>{mapAnimals.length} animals with coordinates</p>
-                <p>Sync status: {selectedRanch?.syncStatus ?? "unknown"}</p>
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">Selected Lots</h2>
-                  <p className="text-sm text-slate-500">Choose a lot or keep the full ranch view.</p>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {selectedLot ? `Animals in ${selectedLot.name}` : "Lots in ranch"}
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    {selectedLot ? "Side panel focused on the selected lot." : "Choose a lot from the header or the map."}
+                  </p>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                  {visibleAnimals.length} animals
-                </span>
+                {selectedLot ? (
+                  <button type="button" onClick={() => setSelectedLotId("")} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
+                    Clear lot
+                  </button>
+                ) : null}
               </div>
 
-              <div className="mt-4">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Lot filter</label>
-                <select value={selectedLotId} onChange={(event) => setSelectedLotId(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <option value="">All lots</option>
-                  {lots.map((lot) => (
-                    <option key={lot._id} value={lot._id}>{lot.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedLotId("")}
-                  className={`w-full rounded-2xl border p-4 text-left ${selectedLotId === "" ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"}`}
-                >
-                  <p className="text-sm font-semibold text-slate-900">All lots</p>
-                  <p className="mt-1 text-sm text-slate-500">{animals.length} animals across the ranch</p>
-                </button>
-
-                {lots.map((lot) => {
-                  const lotAnimals = animals.filter((animal) => animal.lotId === lot._id);
-                  return (
-                    <button
-                      key={lot._id}
-                      type="button"
-                      onClick={() => setSelectedLotId(lot._id)}
-                      className={`w-full rounded-2xl border p-4 text-left ${selectedLotId === lot._id ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"}`}
-                    >
+              {selectedLot ? (
+                <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                  {visibleAnimals.length ? visibleAnimals.map((animal) => (
+                    <article key={animal._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-900">{lot.name}</p>
-                          <p className="mt-1 text-sm text-slate-500">Ixorigue: {lot.ixorigueLotId ?? "Local only"}</p>
+                          <p className="text-sm font-semibold text-slate-900">{animal.earTagNumber}</p>
+                          <p className="mt-1 text-sm text-slate-500">{animal.name ?? animal.breed ?? "Unnamed animal"}</p>
                         </div>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {lot.animalCount ?? lotAnimals.length}
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                          {animal.currentWeight} kg
                         </span>
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      <div className="mt-3 space-y-1 text-sm text-slate-600">
+                        <p>Sex: {animal.sex || "-"}</p>
+                        <p>Breed: {animal.breed || "-"}</p>
+                        <p>Life status: {animal.lifeStatus}</p>
+                        <p>Ixorigue: {animal.ixorigueAnimalId ?? "Local only"}</p>
+                      </div>
+                    </article>
+                  )) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                      No animals found in this lot.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                  {lots.length ? lots.map((lot) => {
+                    const lotAnimals = animals.filter((animal) => animal.lotId === lot._id);
+
+                    return (
+                      <button
+                        key={lot._id}
+                        type="button"
+                        onClick={() => setSelectedLotId(lot._id)}
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left hover:bg-slate-50"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{lot.name}</p>
+                            <p className="mt-1 text-sm text-slate-500">Ixorigue: {lot.ixorigueLotId ?? "Local only"}</p>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {lot.animalCount ?? lotAnimals.length}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  }) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                      No lots available for this ranch.
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           </aside>
         </section>

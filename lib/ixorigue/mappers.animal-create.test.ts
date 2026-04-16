@@ -6,6 +6,7 @@ function baseInput(overrides: Partial<IxorigueAnimalUpsertInput> = {}): Ixorigue
   return {
     localAnimalId: "local-1",
     ixorigueRanchId: "89228e7c-6e99-492e-b085-b06edfc731b5",
+    ixorigueLotId: "0fa8d062-1f50-44fb-a4c2-8967964cbad5",
     earTagNumber: "5051",
     specie: "cow",
     sex: "male",

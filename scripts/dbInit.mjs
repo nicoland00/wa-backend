@@ -64,6 +64,7 @@ async function main() {
   await db.collection("audit_logs").createIndex({ actorUserId: 1, createdAt: -1 });
   await db.collection("audit_logs").createIndex({ "target.type": 1, "target.id": 1, createdAt: -1 });
 
+  await db.collection("integration_credentials").createIndex({ key: 1 }, { unique: true });
   await db.collection("jobs").createIndex({ status: 1, runAt: 1 });
 
   console.log("Indexes initialized");

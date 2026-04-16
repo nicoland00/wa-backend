@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
-import { isAdmin, requireSessionUser } from "@/lib/server/auth";
+import { canViewAdminScreens } from "@/lib/permissions";
+import { requireSessionUser } from "@/lib/server/auth";
 
 export async function GET() {
   const user = await requireSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(user)) {
+  if (!canViewAdminScreens(user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

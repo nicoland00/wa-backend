@@ -1,4 +1,7 @@
+import { ObjectId } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
+import { canOwnAssignedRanches } from "@/lib/permissions";
+import { getDb } from "@/lib/mongodb";
 import { logAudit } from "@/lib/server/audit";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { assignExistingRanchToUser } from "@/lib/server/ranches";
@@ -20,7 +23,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid payload" }, { status: 400 });
   }
 
+  if (parsed.data.ownerUserId === actor.userId) {
+    return NextResponse.json({ error: "Admins cannot assign ranch ownership to themselves." }, { status: 400 });
+  }
+
   try {
+    const db = await getDb();
+    const owner = await db.collection("users").findOne({ _id: new ObjectId(parsed.data.ownerUserId) });
+    if (!owner) {
+      return NextResponse.json({ error: "Owner user not found" }, { status: 404 });
+    }
+    if (!canOwnAssignedRanches(owner.role)) {
+      return NextResponse.json({ error: "Ranches can only be assigned to retail users." }, { status: 400 });
+    }
+
     const ranch = await assignExistingRanchToUser({
       ownerUserId: parsed.data.ownerUserId,
       ixorigueRanchId: parsed.data.ixorigueRanchId,

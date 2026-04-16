@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { canViewAdminScreens } from "@/lib/permissions";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
 import { serializeUser } from "@/lib/server/serializers";
@@ -13,7 +14,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(actor)) {
+  if (!canViewAdminScreens(actor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -56,6 +57,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const db = await getDb();
   const _id = new ObjectId(parsedId.data);
   const before = await db.collection<UserDoc>("users").findOne({ _id });
+  if (!before) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (parsed.data.role && parsedId.data === actor.userId) {
+    return NextResponse.json({ error: "Admins cannot change their own role." }, { status: 400 });
+  }
 
   const patch = {
     ...parsed.data,

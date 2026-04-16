@@ -6,9 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import MapView from "@/components/MapView";
+import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
 import type { Lot as MapLot } from "@/lib/api";
+import type { Role } from "@/lib/db/types";
 
-type User = { _id: string; email: string; name: string | null; role?: string };
+type User = { _id: string; email: string; name: string | null; role?: Role };
 type IxorigueRanch = { id: string; name: string | null; code?: string | null };
 type RanchRow = {
   _id: string;
@@ -68,6 +70,8 @@ export default function AdminRanchesPage() {
   const [message, setMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [reassignOwnerId, setReassignOwnerId] = useState("");
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
+  const canManage = session ? canMutateAdminData(session.user.role) : false;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -76,7 +80,7 @@ export default function AdminRanchesPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") {
+    if (status !== "authenticated" || !canView) {
       return;
     }
 
@@ -89,7 +93,7 @@ export default function AdminRanchesPage() {
 
       if (usersRes.ok) {
         const usersData = (await usersRes.json()) as { users: User[] };
-        const eligibleUsers = usersData.users.filter((user) => user.role !== "admin");
+        const eligibleUsers = usersData.users.filter((user) => user.role === "retail");
         setUsers(eligibleUsers);
         setOwnerUserId((current) => current || eligibleUsers[0]?._id || "");
         setSelectedUserId((current) => current || eligibleUsers[0]?._id || "");
@@ -109,20 +113,17 @@ export default function AdminRanchesPage() {
     }
 
     void load();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   const filteredRanches = useMemo(
     () => ranches.filter((ranch) => !selectedUserId || ranch.ownerUserId === selectedUserId),
     [ranches, selectedUserId],
   );
-
-  useEffect(() => {
-    setSelectedRanchId((current) => (filteredRanches.some((ranch) => ranch._id === current) ? current : filteredRanches[0]?._id || ""));
-  }, [filteredRanches]);
+  const resolvedSelectedRanchId = filteredRanches.some((ranch) => ranch._id === selectedRanchId) ? selectedRanchId : filteredRanches[0]?._id || "";
 
   useEffect(() => {
     async function loadDetails() {
-      if (!selectedRanchId) {
+      if (!resolvedSelectedRanchId) {
         setDetails(null);
         setMapData(null);
         setSelectedLotId("");
@@ -130,8 +131,8 @@ export default function AdminRanchesPage() {
       }
 
       const [detailsRes, mapRes] = await Promise.all([
-        fetch(`/api/admin/ranches/${selectedRanchId}`, { cache: "no-store" }),
-        fetch(`/api/map/ranch/${selectedRanchId}`, { cache: "no-store" }),
+        fetch(`/api/admin/ranches/${resolvedSelectedRanchId}`, { cache: "no-store" }),
+        fetch(`/api/map/ranch/${resolvedSelectedRanchId}`, { cache: "no-store" }),
       ]);
 
       if (detailsRes.ok) {
@@ -151,7 +152,7 @@ export default function AdminRanchesPage() {
     }
 
     void loadDetails();
-  }, [selectedRanchId]);
+  }, [resolvedSelectedRanchId]);
 
   async function refreshRanches(nextSelectedId?: string) {
     const response = await fetch("/api/admin/ranches", { cache: "no-store" });
@@ -182,7 +183,7 @@ export default function AdminRanchesPage() {
   }
 
   async function moveRanchToUser() {
-    const ranch = ranches.find((item) => item._id === selectedRanchId);
+    const ranch = ranches.find((item) => item._id === resolvedSelectedRanchId);
     if (!ranch || !reassignOwnerId || !ranch.ixorigueRanchId) {
       return;
     }
@@ -196,24 +197,24 @@ export default function AdminRanchesPage() {
     setMessage(response.ok ? "Ranch moved to the selected user." : data.error ?? "Ranch move failed.");
     if (response.ok) {
       setSelectedUserId(reassignOwnerId);
-      await refreshRanches(data.ranch?._id ?? selectedRanchId);
+      await refreshRanches(data.ranch?._id ?? resolvedSelectedRanchId);
     }
     setBusyAction(null);
   }
 
   async function runSync(action: "sync-lots" | "sync-animals" | "sync-remote") {
-    if (!selectedRanchId) {
+    if (!resolvedSelectedRanchId) {
       return;
     }
     setBusyAction(action);
-    const response = await fetch(`/api/admin/ranches/${selectedRanchId}/${action}`, { method: "POST" });
+    const response = await fetch(`/api/admin/ranches/${resolvedSelectedRanchId}/${action}`, { method: "POST" });
     const data = (await response.json()) as { error?: string };
     setMessage(response.ok ? "Remote sync completed." : data.error ?? "Sync failed.");
     if (response.ok) {
-      await refreshRanches(selectedRanchId);
+      await refreshRanches(resolvedSelectedRanchId);
       const [detailsRes, mapRes] = await Promise.all([
-        fetch(`/api/admin/ranches/${selectedRanchId}`, { cache: "no-store" }),
-        fetch(`/api/map/ranch/${selectedRanchId}`, { cache: "no-store" }),
+        fetch(`/api/admin/ranches/${resolvedSelectedRanchId}`, { cache: "no-store" }),
+        fetch(`/api/map/ranch/${resolvedSelectedRanchId}`, { cache: "no-store" }),
       ]);
       if (detailsRes.ok) {
         setDetails((await detailsRes.json()) as RanchDetails);
@@ -225,10 +226,43 @@ export default function AdminRanchesPage() {
     setBusyAction(null);
   }
 
+  async function deleteRanch() {
+    if (!resolvedSelectedRanchId) {
+      return;
+    }
+
+    const ranch = ranches.find((item) => item._id === resolvedSelectedRanchId);
+    const confirmed = window.confirm(
+      `Delete ${ranch?.name ?? "this ranch"} from Pastora?\n\nThis removes the local ranch, lots, animals, imports, sync jobs, and related data. It does not delete the ranch in Ixorigue.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusyAction("delete");
+    const response = await fetch(`/api/admin/ranches/${resolvedSelectedRanchId}`, { method: "DELETE" });
+    const data = (await response.json()) as { error?: string; summary?: Record<string, number> };
+    setMessage(
+      response.ok
+        ? `Ranch deleted locally. Lots: ${data.summary?.lotsDeleted ?? 0}, animals: ${data.summary?.animalsDeleted ?? 0}, imports: ${data.summary?.importsDeleted ?? 0}.`
+        : data.error ?? "Ranch delete failed.",
+    );
+
+    if (response.ok) {
+      setSelectedRanchId("");
+      setDetails(null);
+      setMapData(null);
+      setSelectedLotId("");
+      await refreshRanches();
+    }
+
+    setBusyAction(null);
+  }
+
   if (status === "loading") {
     return <main className="p-6 text-sm text-slate-600">Loading...</main>;
   }
-  if (session?.user.role !== "admin") {
+  if (!canView) {
     return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
   }
 
@@ -268,22 +302,28 @@ export default function AdminRanchesPage() {
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Ranch Explorer</h1>
-          <p className="mt-1 text-sm text-slate-600">Navigate from users to ranches, then lots, then animals. Use the quick create buttons to add new records in context.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              {users.map((user) => (
-                <option key={user._id} value={user._id}>{user.name ?? user.email}</option>
-              ))}
-            </select>
-            <select value={ixorigueRanchId} onChange={(event) => setIxorigueRanchId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              {ixorigueRanches.map((ranch) => (
-                <option key={ranch.id} value={ranch.id}>{ranch.name ?? ranch.code ?? ranch.id}</option>
-              ))}
-            </select>
-            <button type="button" onClick={() => void assignRanch()} disabled={!ownerUserId || !ixorigueRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
-              {busyAction === "assign" ? "Assigning..." : "+ Assign ranch"}
-            </button>
-          </div>
+          <p className="mt-1 text-sm text-slate-600">Navigate from retail users to ranches, then lots, then animals.</p>
+          {canManage ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                {users.map((user) => (
+                  <option key={user._id} value={user._id}>{user.name ?? user.email}</option>
+                ))}
+              </select>
+              <select value={ixorigueRanchId} onChange={(event) => setIxorigueRanchId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                {ixorigueRanches.map((ranch) => (
+                  <option key={ranch.id} value={ranch.id}>{ranch.name ?? ranch.code ?? ranch.id}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => void assignRanch()} disabled={!ownerUserId || !ixorigueRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
+                {busyAction === "assign" ? "Assigning..." : "+ Assign ranch"}
+              </button>
+            </div>
+          ) : (
+            <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Institutional users can review ranch ownership and sync state here, but assignment and sync actions remain admin-only.
+            </p>
+          )}
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
         </section>
 
@@ -318,7 +358,7 @@ export default function AdminRanchesPage() {
               </div>
               <div className="mt-3 space-y-2">
                 {filteredRanches.length ? filteredRanches.map((ranch) => (
-                  <button key={ranch._id} type="button" onClick={() => setSelectedRanchId(ranch._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selectedRanchId === ranch._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <button key={ranch._id} type="button" onClick={() => setSelectedRanchId(ranch._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${resolvedSelectedRanchId === ranch._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                     <p className="font-medium text-slate-900">{ranch.name}</p>
                     <p className="text-slate-500">{ranch.lotCount} lots · {ranch.animalCount} animals</p>
                     <p className="mt-1 text-xs text-slate-500">{ranch.syncStatus}{ranch.syncError ? ` · ${ranch.syncError}` : ""}</p>
@@ -336,20 +376,31 @@ export default function AdminRanchesPage() {
                   <p className="text-sm text-slate-600">{details?.owner?.name ?? details?.owner?.email ?? "No owner"} · {details?.ranch.ixorigueRanchId ?? "No Ixorigue link"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <select value={reassignOwnerId} onChange={(event) => setReassignOwnerId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    {users.map((user) => (
-                      <option key={user._id} value={user._id}>{user.name ?? user.email}</option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={() => void moveRanchToUser()} disabled={!selectedRanchId || !reassignOwnerId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-                    {busyAction === "reassign" ? "Moving..." : "Assign to another user"}
-                  </button>
-                  <button type="button" onClick={() => void runSync("sync-lots")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync lots</button>
-                  <button type="button" onClick={() => void runSync("sync-animals")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync animals</button>
-                  <button type="button" onClick={() => void runSync("sync-remote")} disabled={!selectedRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">Sync all</button>
+                  {canManage ? (
+                    <>
+                      <select value={reassignOwnerId} onChange={(event) => setReassignOwnerId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        {users.map((user) => (
+                          <option key={user._id} value={user._id}>{user.name ?? user.email}</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => void moveRanchToUser()} disabled={!resolvedSelectedRanchId || !reassignOwnerId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+                        {busyAction === "reassign" ? "Moving..." : "Assign to another user"}
+                      </button>
+                      <button type="button" onClick={() => void runSync("sync-lots")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync lots</button>
+                      <button type="button" onClick={() => void runSync("sync-animals")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync animals</button>
+                      <button type="button" onClick={() => void runSync("sync-remote")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">Sync all</button>
+                      <button type="button" onClick={() => void deleteRanch()} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60">
+                        {busyAction === "delete" ? "Deleting..." : "Delete ranch"}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                      Read only
+                    </span>
+                  )}
                 </div>
               </div>
-              {selectedRanchId ? (
+              {resolvedSelectedRanchId ? (
                 <div className="mt-4">
                   <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={(id) => setSelectedLotId(id)} />
                 </div>
@@ -360,8 +411,8 @@ export default function AdminRanchesPage() {
               <div className="rounded-2xl bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <h2 className="text-base font-semibold text-slate-900">Lots</h2>
-                  {selectedRanchId ? (
-                    <Link href={`/dashboard/admin/lots?ranchId=${selectedRanchId}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">+ New lot</Link>
+                  {resolvedSelectedRanchId && canManage ? (
+                    <Link href={`/dashboard/admin/lots?ranchId=${resolvedSelectedRanchId}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">+ New lot</Link>
                   ) : null}
                 </div>
                 <div className="mt-3 space-y-2">
@@ -384,8 +435,8 @@ export default function AdminRanchesPage() {
                     <h2 className="text-base font-semibold text-slate-900">{selectedLot ? `Animals in ${selectedLot.name}` : "Animals in ranch"}</h2>
                     <p className="text-sm text-slate-500">{visibleAnimals.length} listed</p>
                   </div>
-                  {selectedRanchId ? (
-                    <Link href={`/dashboard/admin/animals?ranchId=${selectedRanchId}${selectedLotId ? `&lotId=${selectedLotId}` : ""}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">+ New animal</Link>
+                  {resolvedSelectedRanchId && canManage ? (
+                    <Link href={`/dashboard/admin/animals?ranchId=${resolvedSelectedRanchId}${selectedLotId ? `&lotId=${selectedLotId}` : ""}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">+ New animal</Link>
                   ) : null}
                 </div>
                 <div className="mt-3 overflow-x-auto">

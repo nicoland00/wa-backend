@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeRole } from "@/lib/permissions";
 import { requireSessionUser, getDbUserBySessionEmail } from "@/lib/server/auth";
 
 export async function GET() {
@@ -16,7 +17,7 @@ export async function GET() {
     userId: dbUser._id.toString(),
     email: dbUser.email,
     name: dbUser.name,
-    role: dbUser.role,
+    role: normalizeRole(dbUser.role),
     phoneE164: dbUser.phoneE164,
     phoneStatus: dbUser.phoneStatus,
     ixorigueUserId: dbUser.ixorigueUserId ?? null,

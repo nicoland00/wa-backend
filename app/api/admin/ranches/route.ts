@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
-import { isAdmin, requireSessionUser } from "@/lib/server/auth";
+import { canViewAdminScreens } from "@/lib/permissions";
+import { requireSessionUser } from "@/lib/server/auth";
 import { serializeRanch } from "@/lib/server/serializers";
 import type { AnimalDoc, LotDoc, RanchDoc, UserDoc } from "@/lib/db/types";
 
-export async function GET(_: NextRequest) {
+export async function GET() {
   const actor = await requireSessionUser();
   if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(actor)) {
+  if (!canViewAdminScreens(actor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { enqueueJob } from "@/lib/server/jobs";
 import { uploadBufferToStorage } from "@/lib/storage";

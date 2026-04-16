@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { getAnimalEarTags, getDevicesByRanch } from "@/lib/ixorigue/client";
-import { isAdmin, requireSessionUser } from "@/lib/server/auth";
+import { canViewAdminScreens } from "@/lib/permissions";
+import { requireSessionUser } from "@/lib/server/auth";
 import type { AnimalDoc, RanchDoc } from "@/lib/db/types";
 
 const SPECIE_OPTIONS = [
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
   if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(actor)) {
+  if (!canViewAdminScreens(actor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

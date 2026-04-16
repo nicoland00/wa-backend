@@ -1,6 +1,7 @@
 import type { DefaultSession, NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { getDb } from "@/lib/mongodb";
+import { normalizeRole } from "@/lib/permissions";
 import type { PhoneStatus, Role, UserDoc } from "@/lib/db/types";
 
 declare module "next-auth" {
@@ -36,6 +37,11 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     GoogleProvider({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      authorization: {
+        params: {
+          prompt: "select_account",
+        },
+      },
     }),
   );
 }
@@ -58,7 +64,7 @@ export const authOptions: NextAuthOptions = {
         {
           $setOnInsert: {
             email: user.email,
-            role: "user",
+            role: "retail",
             phoneE164: null,
             phoneStatus: "none",
             createdAt: now,
@@ -85,7 +91,7 @@ export const authOptions: NextAuthOptions = {
       const dbUser = await getUserByEmail(token.email);
       if (dbUser) {
         token.userId = dbUser._id.toString();
-        token.role = dbUser.role;
+        token.role = normalizeRole(dbUser.role);
         token.phoneE164 = dbUser.phoneE164;
         token.phoneStatus = dbUser.phoneStatus;
       }
@@ -98,7 +104,7 @@ export const authOptions: NextAuthOptions = {
       }
 
       session.user.userId = token.userId ?? "";
-      session.user.role = token.role ?? "user";
+      session.user.role = token.role ?? "retail";
       session.user.phoneE164 = token.phoneE164 ?? null;
       session.user.phoneStatus = token.phoneStatus ?? "none";
 

@@ -14,6 +14,7 @@ import {
   mapUpdateLotPayload,
   mapUpdateRanchSettingsPayload,
 } from "@/lib/ixorigue/mappers";
+import { resolveIxorigueRefreshTokenConfig, recordIxorigueCredentialRefreshResult, type ResolvedIxorigueRefreshTokenConfig } from "@/lib/server/ixorigue-credentials";
 import type {
   IxorigueAnimalPathPointDto,
   IxorigueAnimalUpsertInput,
@@ -59,96 +60,91 @@ function getBaseUrl() {
   }
   return baseUrl.replace(/\/+$/, "");
 }
+let accessTokenCache: { token: string; expiresAt: number; cacheKey: string } | null = null;
+let tokenPromise: Promise<string> | null = null;
+let tokenPromiseKey: string | null = null;
 
-function decodeJwtPayload(token: string) {
-  const parts = token.split(".");
-  if (parts.length < 2) {
-    throw new Error("Invalid JWT structure");
-  }
-
-  const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
-  const json = Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
-  return JSON.parse(json) as Record<string, unknown>;
-}
-
-function getRefreshTokenConfig() {
-  const refreshToken = process.env.IXORIGUE_REFRESH_TOKEN;
-  if (!refreshToken) {
+async function getAccessTokenFromRefreshToken(config?: ResolvedIxorigueRefreshTokenConfig | null) {
+  const resolvedConfig = config ?? await resolveIxorigueRefreshTokenConfig();
+  if (!resolvedConfig) {
     return null;
   }
 
-  const payload = decodeJwtPayload(refreshToken);
-  const issuer = typeof payload.iss === "string" ? payload.iss.replace(/\/+$/, "") : null;
-  const clientId = typeof payload.azp === "string" ? payload.azp : process.env.IXORIGUE_CLIENT_ID || "platform";
-
-  return {
-    refreshToken,
-    clientId,
-    tokenUrl: process.env.IXORIGUE_TOKEN_URL || (issuer ? `${issuer}/protocol/openid-connect/token` : null),
-  };
-}
-
-let accessTokenCache: { token: string; expiresAt: number } | null = null;
-let tokenPromise: Promise<string> | null = null;
-
-async function getAccessTokenFromRefreshToken() {
-  const config = getRefreshTokenConfig();
-  if (!config?.tokenUrl) {
+  const cacheKey = `${resolvedConfig.source}:${resolvedConfig.clientId}:${resolvedConfig.tokenUrl ?? ""}:${resolvedConfig.refreshToken}`;
+  if (!resolvedConfig.tokenUrl) {
     throw new Error("Missing IXORIGUE_TOKEN_URL and could not infer token endpoint from IXORIGUE_REFRESH_TOKEN");
   }
-  const tokenUrl = config.tokenUrl;
+  const tokenUrl = resolvedConfig.tokenUrl;
 
-  if (accessTokenCache && accessTokenCache.expiresAt > Date.now() + 30_000) {
+  if (accessTokenCache && accessTokenCache.cacheKey === cacheKey && accessTokenCache.expiresAt > Date.now() + 30_000) {
     return accessTokenCache.token;
   }
 
-  if (!tokenPromise) {
+  if (!tokenPromise || tokenPromiseKey !== cacheKey) {
+    tokenPromiseKey = cacheKey;
     tokenPromise = (async () => {
-      const body = new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: config.refreshToken,
-        client_id: process.env.IXORIGUE_CLIENT_ID || config.clientId,
-      });
+      try {
+        const body = new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: resolvedConfig.refreshToken,
+          client_id: process.env.IXORIGUE_CLIENT_ID || resolvedConfig.clientId,
+        });
 
-      if (process.env.IXORIGUE_CLIENT_SECRET) {
-        body.set("client_secret", process.env.IXORIGUE_CLIENT_SECRET);
+        if (process.env.IXORIGUE_CLIENT_SECRET) {
+          body.set("client_secret", process.env.IXORIGUE_CLIENT_SECRET);
+        }
+
+        const response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+          cache: "no-store",
+        });
+
+        const raw = await response.text();
+        const data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+        if (!response.ok || typeof data.access_token !== "string") {
+          const message = typeof data.error_description === "string"
+            ? data.error_description
+            : typeof data.error === "string"
+              ? data.error
+              : `${response.status} ${response.statusText}`;
+
+          await recordIxorigueCredentialRefreshResult({
+            source: resolvedConfig.source,
+            ok: false,
+            error: message,
+          });
+
+          throw new Error(`Ixorigue token refresh failed: ${message}`);
+        }
+
+        const expiresIn = typeof data.expires_in === "number" ? data.expires_in : 300;
+        accessTokenCache = {
+          token: data.access_token,
+          expiresAt: Date.now() + expiresIn * 1000,
+          cacheKey,
+        };
+
+        await recordIxorigueCredentialRefreshResult({
+          source: resolvedConfig.source,
+          ok: true,
+        });
+
+        return data.access_token;
+      } finally {
+        tokenPromise = null;
+        tokenPromiseKey = null;
       }
-
-      const response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-        cache: "no-store",
-      });
-
-      const raw = await response.text();
-      const data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      if (!response.ok || typeof data.access_token !== "string") {
-        const message = typeof data.error_description === "string"
-          ? data.error_description
-          : typeof data.error === "string"
-            ? data.error
-            : `${response.status} ${response.statusText}`;
-        throw new Error(`Ixorigue token refresh failed: ${message}`);
-      }
-
-      const expiresIn = typeof data.expires_in === "number" ? data.expires_in : 300;
-      accessTokenCache = {
-        token: data.access_token,
-        expiresAt: Date.now() + expiresIn * 1000,
-      };
-      return data.access_token;
-    })().finally(() => {
-      tokenPromise = null;
-    });
+    })();
   }
 
   return tokenPromise;
 }
 
 async function getHeaders(includeJsonContentType = true) {
-  const token = process.env.IXORIGUE_AUTH_TOKEN || (process.env.IXORIGUE_REFRESH_TOKEN ? await getAccessTokenFromRefreshToken() : null);
+  const resolvedConfig = process.env.IXORIGUE_AUTH_TOKEN ? null : await resolveIxorigueRefreshTokenConfig();
+  const token = process.env.IXORIGUE_AUTH_TOKEN || (resolvedConfig ? await getAccessTokenFromRefreshToken(resolvedConfig) : null);
   const apiKey = process.env.IXORIGUE_API_KEY;
 
   if (!token && !apiKey) {

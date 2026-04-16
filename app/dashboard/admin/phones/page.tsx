@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { canApprovePhones, canViewAdminScreens } from "@/lib/permissions";
 
 type PendingUser = {
   userId: string;
@@ -20,6 +21,8 @@ export default function AdminPhonesPage() {
   const [pending, setPending] = useState<PendingUser[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
+  const canDecide = session ? canApprovePhones(session.user.role) : false;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -28,7 +31,7 @@ export default function AdminPhonesPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") {
+    if (status !== "authenticated" || !canView) {
       return;
     }
 
@@ -53,7 +56,7 @@ export default function AdminPhonesPage() {
     }
 
     void fetchPending();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   async function decide(userId: string, decision: "approved" | "rejected") {
     const response = await fetch("/api/admin/phones/decide", {
@@ -75,11 +78,11 @@ export default function AdminPhonesPage() {
     return <main className="p-6 text-sm text-slate-600">Cargando sesión...</main>;
   }
 
-  if (session?.user.role !== "admin") {
+  if (!canView) {
     return (
       <main className="min-h-screen bg-[#f7f9fb] p-6">
         <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 text-sm text-slate-700 shadow-sm">
-          <p>403 - Solo administradores pueden acceder a esta página.</p>
+          <p>403 - No tienes permisos para acceder a esta página.</p>
           <Link href="/dashboard" className="mt-3 inline-block text-slate-900 underline">
             Volver al dashboard
           </Link>
@@ -97,6 +100,11 @@ export default function AdminPhonesPage() {
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Solicitudes pendientes de teléfono</h1>
+          {!canDecide ? (
+            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Institutional users can review pending requests here, but approval decisions remain admin-only.
+            </p>
+          ) : null}
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
           {loading ? <p className="mt-4 text-sm text-slate-600">Cargando...</p> : null}
@@ -129,6 +137,7 @@ export default function AdminPhonesPage() {
                           <button
                             type="button"
                             onClick={() => void decide(item.userId, "approved")}
+                            disabled={!canDecide}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
                           >
                             Aprobar
@@ -136,6 +145,7 @@ export default function AdminPhonesPage() {
                           <button
                             type="button"
                             onClick={() => void decide(item.userId, "rejected")}
+                            disabled={!canDecide}
                             className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-500"
                           >
                             Rechazar

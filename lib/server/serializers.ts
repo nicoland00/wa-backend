@@ -9,11 +9,13 @@ import type {
   SyncJobDoc,
   UserDoc,
 } from "@/lib/db/types";
+import { normalizeRole } from "@/lib/permissions";
 
 export function serializeUser(user: UserDoc) {
   return {
     ...user,
     _id: user._id.toString(),
+    role: normalizeRole(user.role),
   };
 }
 

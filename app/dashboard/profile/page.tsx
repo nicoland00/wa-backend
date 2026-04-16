@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import type { Role } from "@/lib/db/types";
 
 type MeResponse = {
   email: string;
   name: string | null;
-  role: "user" | "admin";
+  role: Role;
   phoneE164: string | null;
   phoneStatus: "none" | "pending" | "approved" | "rejected";
 };

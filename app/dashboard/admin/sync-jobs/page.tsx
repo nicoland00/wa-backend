@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { canViewAdminScreens } from "@/lib/permissions";
 
 type SyncJob = {
   _id: string;
@@ -20,6 +21,7 @@ export default function AdminSyncJobsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [jobs, setJobs] = useState<SyncJob[]>([]);
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -28,7 +30,7 @@ export default function AdminSyncJobsPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") {
+    if (status !== "authenticated" || !canView) {
       return;
     }
 
@@ -42,12 +44,12 @@ export default function AdminSyncJobsPage() {
     }
 
     void loadJobs();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   if (status === "loading") {
     return <main className="p-6 text-sm text-slate-600">Loading...</main>;
   }
-  if (session?.user.role !== "admin") {
+  if (!canView) {
     return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
   }
 

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
-import { isAdmin, requireSessionUser } from "@/lib/server/auth";
+import { canViewAdminScreens } from "@/lib/permissions";
+import { requireSessionUser } from "@/lib/server/auth";
 import { serializeAnimal, serializeImport, serializeLot } from "@/lib/server/serializers";
 import { objectIdSchema } from "@/lib/validators/common";
 import type { AnimalDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
@@ -27,7 +28,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   if (!ranch) {
     return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
   }
-  if (!isAdmin(user) && ranch.ownerUserId.toString() !== user.userId) {
+  if (!canViewAdminScreens(user) && ranch.ownerUserId.toString() !== user.userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

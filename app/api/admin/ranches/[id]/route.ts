@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { canViewAdminScreens } from "@/lib/permissions";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
-import { getAdminRanchDetails } from "@/lib/server/ranches";
+import { deleteLocalRanchCascade, getAdminRanchDetails } from "@/lib/server/ranches";
 import { serializeAnimal, serializeImport, serializeLot, serializeRanch, serializeUser } from "@/lib/server/serializers";
 import { syncRanchUpdate } from "@/lib/server/sync";
 import { objectIdSchema } from "@/lib/validators/common";
@@ -15,7 +16,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(actor)) {
+  if (!canViewAdminScreens(actor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -88,4 +89,36 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   const refreshed = await db.collection<RanchDoc>("ranches").findOne({ _id });
   return NextResponse.json({ ranch: refreshed ? serializeRanch(refreshed) : null });
+}
+
+export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const actor = await requireSessionUser();
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isAdmin(actor)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const params = await context.params;
+  const parsedId = objectIdSchema.safeParse(params.id);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "Invalid ranch id" }, { status: 400 });
+  }
+
+  const result = await deleteLocalRanchCascade(parsedId.data);
+  if (!result) {
+    return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
+  }
+
+  await logAudit({
+    actorUserId: actor.userId,
+    actorRole: actor.role,
+    action: "admin.ranch.delete_local",
+    target: { type: "ranch", id: parsedId.data },
+    before: result.ranch,
+    after: result.summary,
+  });
+
+  return NextResponse.json({ ok: true, summary: result.summary });
 }

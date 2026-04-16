@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 
-export type Role = "user" | "admin";
+export type Role = "admin" | "institutional" | "retail";
+export type StoredRole = Role | "user";
 export type PhoneStatus = "none" | "pending" | "approved" | "rejected";
 export type ImportStatus = "received" | "stored" | "awaiting_lot" | "assigned" | "processing" | "processed" | "failed";
 export type SyncStatus = "pending" | "synced" | "failed";
@@ -25,7 +26,7 @@ export type UserDoc = {
   _id: ObjectId;
   email: string;
   name: string | null;
-  role: Role;
+  role: StoredRole;
   phoneE164: string | null;
   phoneStatus: PhoneStatus;
   ixorigueUserId?: string | null;
@@ -184,6 +185,19 @@ export type JobDoc = {
   lastError?: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type IntegrationCredentialDoc = {
+  _id: ObjectId;
+  key: "ixorigue";
+  encryptedRefreshToken: string | null;
+  tokenUrl: string | null;
+  clientId: string | null;
+  lastRefreshAttemptAt?: Date | null;
+  lastRefreshSucceededAt?: Date | null;
+  lastRefreshError?: string | null;
+  updatedAt: Date;
+  updatedByUserId: ObjectId;
 };
 
 export type DataErrorRequestDoc = {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { canViewAdminScreens } from "@/lib/permissions";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
 import { serializeLot } from "@/lib/server/serializers";
@@ -14,7 +15,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!isAdmin(actor)) {
+  if (!canViewAdminScreens(actor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

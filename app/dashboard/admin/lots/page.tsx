@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
 
 type Ranch = { _id: string; name: string; syncStatus?: string };
 type Lot = {
@@ -25,6 +26,8 @@ export default function AdminLotsPage() {
   const [geometry, setGeometry] = useState("");
   const [message, setMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
+  const canManage = session ? canMutateAdminData(session.user.role) : false;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -33,7 +36,7 @@ export default function AdminLotsPage() {
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") {
+    if (status !== "authenticated" || !canView) {
       return;
     }
 
@@ -49,7 +52,7 @@ export default function AdminLotsPage() {
     }
 
     void loadRanches();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   useEffect(() => {
     async function loadLots() {
@@ -121,7 +124,7 @@ export default function AdminLotsPage() {
   if (status === "loading") {
     return <main className="p-6 text-sm text-slate-600">Loading...</main>;
   }
-  if (session?.user.role !== "admin") {
+  if (!canView) {
     return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
   }
 
@@ -138,14 +141,22 @@ export default function AdminLotsPage() {
                 <option key={ranch._id} value={ranch._id}>{ranch.name}</option>
               ))}
             </select>
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lot name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <textarea value={geometry} onChange={(event) => setGeometry(event.target.value)} placeholder='Optional GeoJSON polygon' className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => void createLot()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">Create lot</button>
-              <button type="button" onClick={() => void syncRemoteLots()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-                {syncing ? "Syncing..." : "Pull remote lots"}
-              </button>
-            </div>
+            {canManage ? (
+              <>
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lot name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <textarea value={geometry} onChange={(event) => setGeometry(event.target.value)} placeholder='Optional GeoJSON polygon' className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void createLot()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">Create lot</button>
+                  <button type="button" onClick={() => void syncRemoteLots()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+                    {syncing ? "Syncing..." : "Pull remote lots"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Institutional users can review lots here, but lot creation and sync actions remain admin-only.
+              </p>
+            )}
           </div>
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
         </section>
@@ -168,9 +179,13 @@ export default function AdminLotsPage() {
                     <td className="px-3 py-2">{lot.ixorigueLotId ?? "pending"}</td>
                     <td className="px-3 py-2">{lot.syncStatus}{lot.syncError ? ` · ${lot.syncError}` : ""}</td>
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => void retrySync(lot._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
-                        Retry sync
-                      </button>
+                      {canManage ? (
+                        <button type="button" onClick={() => void retrySync(lot._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
+                          Retry sync
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500">Read only</span>
+                      )}
                     </td>
                   </tr>
                 ))}

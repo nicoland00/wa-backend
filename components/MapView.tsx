@@ -7,6 +7,10 @@ type AnimalPoint = {
   animalId: string;
   lotId: string;
   earTagNumber: string;
+  lotName?: string;
+  breed?: string;
+  sex?: string;
+  currentWeight?: number;
   coordinates: { lat: number; lng: number };
 };
 
@@ -53,6 +57,12 @@ type MapLoadEvent = {
   features?: Array<{
     properties?: {
       lotId?: string;
+      animalId?: string;
+      earTagNumber?: string;
+      lotName?: string;
+      breed?: string;
+      sex?: string;
+      currentWeight?: string | number;
     };
   }>;
 };
@@ -108,6 +118,14 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
   const mapRef = useRef<MapInstance | null>(null);
   const selectedRef = useRef<string | null>(null);
   const [mapboxReady, setMapboxReady] = useState<boolean>(() => Boolean(getMapboxRuntime()));
+  const [hoveredAnimal, setHoveredAnimal] = useState<{
+    animalId: string;
+    earTagNumber: string;
+    lotName: string | null;
+    breed: string | null;
+    sex: string | null;
+    currentWeight: number | null;
+  } | null>(null);
 
   const mapToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -139,6 +157,10 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
         animalId: animal.animalId,
         lotId: animal.lotId,
         earTagNumber: animal.earTagNumber,
+        lotName: animal.lotName ?? "",
+        breed: animal.breed ?? "",
+        sex: animal.sex ?? "",
+        currentWeight: animal.currentWeight ?? "",
       },
       geometry: {
         type: "Point",
@@ -238,6 +260,34 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
       map.getCanvas().style.cursor = "";
     });
 
+    map.on("mouseenter", ANIMAL_LAYER_ID, (event) => {
+      const feature = event.features?.[0]?.properties;
+      if (!feature?.animalId || !feature.earTagNumber) {
+        return;
+      }
+
+      const nextWeight = typeof feature.currentWeight === "number"
+        ? feature.currentWeight
+        : typeof feature.currentWeight === "string" && feature.currentWeight.trim()
+          ? Number(feature.currentWeight)
+          : null;
+
+      map.getCanvas().style.cursor = "pointer";
+      setHoveredAnimal({
+        animalId: feature.animalId,
+        earTagNumber: feature.earTagNumber,
+        lotName: feature.lotName?.trim() || null,
+        breed: feature.breed?.trim() || null,
+        sex: feature.sex?.trim() || null,
+        currentWeight: Number.isFinite(nextWeight) ? nextWeight : null,
+      });
+    });
+
+    map.on("mouseleave", ANIMAL_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "";
+      setHoveredAnimal(null);
+    });
+
     mapRef.current = map;
 
     return () => {
@@ -331,6 +381,18 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
       <div className="absolute left-4 top-4 rounded-xl bg-white/90 px-3 py-2 text-xs text-slate-700 shadow">
         {selectedLotId ? `${visibleAnimals.length} animals in selected lot` : `${visibleAnimals.length} animals in ranch view`}
       </div>
+      {hoveredAnimal ? (
+        <div className="absolute bottom-4 left-4 max-w-[260px] rounded-2xl bg-white/95 px-4 py-3 shadow-lg">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Animal hover</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">{hoveredAnimal.earTagNumber}</p>
+          <div className="mt-2 space-y-1 text-sm text-slate-600">
+            <p>Lot: {hoveredAnimal.lotName ?? "Unknown"}</p>
+            <p>Breed: {hoveredAnimal.breed ?? "-"}</p>
+            <p>Sex: {hoveredAnimal.sex ?? "-"}</p>
+            <p>Weight: {hoveredAnimal.currentWeight != null ? `${hoveredAnimal.currentWeight} kg` : "-"}</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

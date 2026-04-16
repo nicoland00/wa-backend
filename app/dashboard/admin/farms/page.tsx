@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
 
 type PendingFarm = {
   _id: string;
@@ -17,13 +18,15 @@ export default function AdminFarmsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [farms, setFarms] = useState<PendingFarm[]>([]);
+  const canView = session ? canViewAdminScreens(session.user.role) : false;
+  const canManage = session ? canMutateAdminData(session.user.role) : false;
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
   }, [router, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "admin") return;
+    if (status !== "authenticated" || !canView) return;
 
     async function run() {
       const res = await fetch("/api/admin/farms/pending", { cache: "no-store" });
@@ -33,7 +36,7 @@ export default function AdminFarmsPage() {
     }
 
     void run();
-  }, [session?.user.role, status]);
+  }, [canView, status]);
 
   async function decide(farmId: string, decision: "approved" | "rejected") {
     const response = await fetch(`/api/admin/farms/${farmId}/decide`, {
@@ -48,7 +51,7 @@ export default function AdminFarmsPage() {
   }
 
   if (status === "loading") return <main className="p-6 text-sm text-slate-600">Loading...</main>;
-  if (session?.user.role !== "admin") return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+  if (!canView) return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
 
   return (
     <main className="min-h-screen bg-[#f7f9fb] p-6">
@@ -56,6 +59,7 @@ export default function AdminFarmsPage() {
         <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Pending farm approvals</h1>
+          {!canManage ? <p className="mt-3 text-sm text-slate-600">Institutional users can review pending farms here, but only admins can approve or reject them.</p> : null}
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
@@ -73,10 +77,14 @@ export default function AdminFarmsPage() {
                     <td className="px-3 py-2">{farm.ixorigueRanchId}</td>
                     <td className="px-3 py-2">{farm.ownerUserId}</td>
                     <td className="px-3 py-2">
-                      <div className="flex gap-2">
-                        <button onClick={() => void decide(farm._id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-500">Approve</button>
-                        <button onClick={() => void decide(farm._id, "rejected")} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs text-white hover:bg-rose-500">Reject</button>
-                      </div>
+                      {canManage ? (
+                        <div className="flex gap-2">
+                          <button onClick={() => void decide(farm._id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-500">Approve</button>
+                          <button onClick={() => void decide(farm._id, "rejected")} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs text-white hover:bg-rose-500">Reject</button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Read only</span>
+                      )}
                     </td>
                   </tr>
                 ))}

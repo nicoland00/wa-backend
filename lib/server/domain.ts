@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { canViewAdminScreens } from "@/lib/permissions";
 import type { AnimalDoc, ImportDoc, LotDoc, RanchDoc, UserDoc } from "@/lib/db/types";
 import type { SessionUser } from "@/lib/server/auth";
 
@@ -38,7 +39,7 @@ export async function userOwnsRanch(user: SessionUser, ranchId: ObjectId) {
 }
 
 export async function assertRanchAccess(user: SessionUser, ranchId: ObjectId) {
-  if (user.role === "admin") {
+  if (canViewAdminScreens(user)) {
     return true;
   }
   return userOwnsRanch(user, ranchId);

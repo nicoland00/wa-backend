@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { ObjectId } from "mongodb";
 import { authOptions } from "@/lib/authOptions";
 import { getDb } from "@/lib/mongodb";
+import { canViewAdminScreens, isAdminRole, normalizeRole } from "@/lib/permissions";
 import type { Role, UserDoc } from "@/lib/db/types";
 
 export type SessionUser = {
@@ -37,5 +38,13 @@ export function toObjectId(id: string): ObjectId {
 }
 
 export function isAdmin(user: SessionUser): boolean {
-  return user.role === "admin";
+  return isAdminRole(user);
+}
+
+export function canViewAdmin(user: SessionUser): boolean {
+  return canViewAdminScreens(user);
+}
+
+export function normalizeSessionRole(role: string | null | undefined): Role {
+  return normalizeRole(role);
 }

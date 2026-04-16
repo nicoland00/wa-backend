@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "lint": "eslint",
     "db:init": "node scripts/dbInit.mjs",
+    "migrate:roles": "node scripts/migrateLegacyRoles.mjs",
     "worker": "node scripts/worker.mjs"
   },
   "dependencies": {

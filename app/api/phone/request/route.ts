@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/mongodb";
+import { normalizeRole } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
 import { e164Schema } from "@/lib/validators/common";
 
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     userId: updated?._id.toString(),
     email: updated?.email,
     name: updated?.name,
-    role: updated?.role,
+    role: normalizeRole(updated?.role),
     phoneE164: updated?.phoneE164,
     phoneStatus: updated?.phoneStatus,
   });
