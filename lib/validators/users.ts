@@ -14,8 +14,7 @@ export const adminUserPatchSchema = z.object({
   name: z.string().trim().min(1).optional(),
   role: roleSchema.optional(),
   phoneE164: e164Schema.nullable().optional(),
-  phoneStatus: z.enum(["none", "pending", "approved", "rejected"]).optional(),
   ixorigueUserId: z.string().trim().min(1).nullable().optional(),
-});
+}).strict();
 
 export const adminUserIdParamSchema = objectIdSchema;

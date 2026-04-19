@@ -8,6 +8,7 @@ import { serializeUser } from "@/lib/server/serializers";
 import { adminUserPatchSchema } from "@/lib/validators/users";
 import { objectIdSchema } from "@/lib/validators/common";
 import type { UserDoc } from "@/lib/db/types";
+import { normalizeRole } from "@/lib/permissions";
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   const actor = await requireSessionUser();
@@ -63,6 +64,23 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   if (parsed.data.role && parsedId.data === actor.userId) {
     return NextResponse.json({ error: "Admins cannot change their own role." }, { status: 400 });
+  }
+
+  const nextRole = parsed.data.role ? normalizeRole(parsed.data.role) : null;
+  const currentRole = normalizeRole(before.role);
+
+  if (nextRole && currentRole === "admin" && nextRole !== "admin") {
+    const otherAdmins = await db.collection<UserDoc>("users").countDocuments({
+      _id: { $ne: _id },
+      role: "admin",
+    });
+
+    if (otherAdmins === 0) {
+      return NextResponse.json(
+        { error: "At least one admin must remain in the system." },
+        { status: 400 },
+      );
+    }
   }
 
   const patch = {
