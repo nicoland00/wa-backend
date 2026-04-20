@@ -12,7 +12,7 @@ const optionalTrimmedString = z.union([z.string(), z.null(), z.undefined()]).tra
 export const animalBaseSchema = z.object({
   lotId: objectIdSchema,
   specie: z.enum(["cow", "sheep", "goat", "pig", "horse", "donkey"]),
-  name: z.string().trim().min(1),
+  name: optionalTrimmedString,
   sex: z.enum(["female", "male", "steer"]),
   earTagNumber: z.string().trim().min(1),
   breed: optionalTrimmedString,

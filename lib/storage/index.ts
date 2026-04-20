@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 export type StoredFileRef = {
@@ -8,6 +9,10 @@ export type StoredFileRef = {
   key: string;
   url?: string;
 };
+
+export function getLocalStorageBaseDir() {
+  return process.env.LOCAL_STORAGE_DIR || path.join(os.tmpdir(), "wa-backend-storage");
+}
 
 async function loadAwsSdk() {
   const dynamicImport = new Function("m", "return import(m)") as (m: string) => Promise<unknown>;
@@ -75,7 +80,7 @@ export async function uploadBufferToStorage(params: {
     return { provider, bucket: process.env.S3_BUCKET, key };
   }
 
-  const baseDir = process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), "tmp-storage");
+  const baseDir = getLocalStorageBaseDir();
   const absolutePath = path.join(baseDir, key);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, params.buffer);

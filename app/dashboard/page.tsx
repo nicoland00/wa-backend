@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import MapView from "@/components/MapView";
@@ -30,13 +30,20 @@ type Animal = {
   _id: string;
   lotId: string;
   name?: string | null;
+  specie?: string | null;
   sex: string;
   breed: string;
   color: string;
   brandNumber: string;
   earTagNumber: string;
+  initialWeight?: number;
   currentWeight: number;
   lifeStatus: "alive" | "dead";
+  registerReason?: string | null;
+  birthDate?: string | null;
+  dateOfPurchase?: string | null;
+  syncStatus?: "pending" | "synced" | "failed";
+  syncError?: string | null;
   ixorigueAnimalId: string | null;
   photoUrl: string | null;
   videoUrl: string | null;
@@ -61,6 +68,88 @@ type MapResponse = {
   importsByLot: ImportItem[];
 };
 
+const DASHBOARD_SELECTED_RANCH_KEY = "pastora.dashboard.selectedRanchId";
+const DASHBOARD_SELECTED_LOT_KEY_PREFIX = "pastora.dashboard.selectedLotId";
+
+function readStoredSelectedRanchId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    return window.localStorage.getItem(DASHBOARD_SELECTED_RANCH_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredSelectedRanchId(ranchId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (ranchId) {
+      window.localStorage.setItem(DASHBOARD_SELECTED_RANCH_KEY, ranchId);
+      return;
+    }
+
+    window.localStorage.removeItem(DASHBOARD_SELECTED_RANCH_KEY);
+  } catch {}
+}
+
+function getSelectedLotStorageKey(ranchId: string) {
+  return `${DASHBOARD_SELECTED_LOT_KEY_PREFIX}:${ranchId}`;
+}
+
+function readStoredSelectedLotId(ranchId: string) {
+  if (typeof window === "undefined" || !ranchId) {
+    return "";
+  }
+
+  try {
+    return window.localStorage.getItem(getSelectedLotStorageKey(ranchId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredSelectedLotId(ranchId: string, lotId: string) {
+  if (typeof window === "undefined" || !ranchId) {
+    return;
+  }
+
+  try {
+    if (lotId) {
+      window.localStorage.setItem(getSelectedLotStorageKey(ranchId), lotId);
+      return;
+    }
+
+    window.localStorage.removeItem(getSelectedLotStorageKey(ranchId));
+  } catch {}
+}
+
+function normalizeSearchValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function formatSize(value: number | null | undefined) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  return `${(value / 1024 / 1024).toFixed(2)} MB`;
+}
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -71,14 +160,32 @@ export default function DashboardPage() {
   const [selectedLotId, setSelectedLotId] = useState("");
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [imports, setImports] = useState<ImportItem[]>([]);
+  const [activeAnimalId, setActiveAnimalId] = useState<string | null>(null);
+  const selectedLotIdRef = useRef(selectedLotId);
 
   const hasAdminAccess = session ? canViewAdminScreens(session.user.role) : false;
+
+  function handleSelectRanch(ranchId: string) {
+    setSelectedRanchId(ranchId);
+    setSelectedLotId("");
+    setActiveAnimalId(null);
+  }
+
+  function handleSelectLot(lotId: string) {
+    setSelectedLotId(lotId);
+    setActiveAnimalId(null);
+    writeStoredSelectedLotId(selectedRanchId, lotId);
+  }
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
     }
   }, [router, status]);
+
+  useEffect(() => {
+    selectedLotIdRef.current = selectedLotId;
+  }, [selectedLotId]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -93,7 +200,14 @@ export default function DashboardPage() {
 
       const data = (await response.json()) as { ranches: Ranch[] };
       setRanches(data.ranches);
-      setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
+      setSelectedRanchId((current) => {
+        if (current && data.ranches.some((ranch) => ranch._id === current)) {
+          return current;
+        }
+
+        const storedRanchId = readStoredSelectedRanchId();
+        return data.ranches.some((ranch) => ranch._id === storedRanchId) ? storedRanchId : data.ranches[0]?._id || "";
+      });
     }
 
     async function loadUserRanches() {
@@ -104,7 +218,14 @@ export default function DashboardPage() {
 
       const data = (await response.json()) as { ranches: Ranch[] };
       setRanches(data.ranches);
-      setSelectedRanchId((current) => current || data.ranches[0]?._id || "");
+      setSelectedRanchId((current) => {
+        if (current && data.ranches.some((ranch) => ranch._id === current)) {
+          return current;
+        }
+
+        const storedRanchId = readStoredSelectedRanchId();
+        return data.ranches.some((ranch) => ranch._id === storedRanchId) ? storedRanchId : data.ranches[0]?._id || "";
+      });
     }
 
     void (hasAdminAccess ? loadRanches() : loadUserRanches());
@@ -117,6 +238,7 @@ export default function DashboardPage() {
         setAnimals([]);
         setImports([]);
         setSelectedLotId("");
+        setActiveAnimalId(null);
         return;
       }
 
@@ -126,13 +248,25 @@ export default function DashboardPage() {
       }
 
       const data = (await response.json()) as MapResponse;
+      const storedLotId = readStoredSelectedLotId(selectedRanchId);
+      const nextLotId = data.lots.some((lot) => lot._id === selectedLotIdRef.current)
+        ? selectedLotIdRef.current
+        : data.lots.some((lot) => lot._id === storedLotId)
+          ? storedLotId
+          : "";
+
       setLots(data.lots);
-      setSelectedLotId((current) => (data.lots.some((lot) => lot._id === current) ? current : ""));
+      setSelectedLotId(nextLotId);
+      writeStoredSelectedLotId(selectedRanchId, nextLotId);
       setAnimals(data.animals);
       setImports(data.importsByLot);
     }
 
     void loadRanchMap();
+  }, [selectedRanchId]);
+
+  useEffect(() => {
+    writeStoredSelectedRanchId(selectedRanchId);
   }, [selectedRanchId]);
 
   const selectedRanch = ranches.find((ranch) => ranch._id === selectedRanchId) ?? null;
@@ -144,6 +278,54 @@ export default function DashboardPage() {
     () => new Map(lots.map((lot) => [lot._id, lot])),
     [lots],
   );
+  const activeAnimal = useMemo(
+    () => animals.find((animal) => animal._id === activeAnimalId) ?? null,
+    [activeAnimalId, animals],
+  );
+
+  const sortedVisibleAnimals = useMemo(() => {
+    return [...visibleAnimals].sort((left, right) => {
+      const leftLotName = lotById.get(left.lotId)?.name ?? "";
+      const rightLotName = lotById.get(right.lotId)?.name ?? "";
+
+      if (!selectedLotId && leftLotName !== rightLotName) {
+        return leftLotName.localeCompare(rightLotName);
+      }
+
+      return (left.earTagNumber || "").localeCompare(right.earTagNumber || "");
+    });
+  }, [lotById, selectedLotId, visibleAnimals]);
+
+  const activeAnimalImports = useMemo(() => {
+    if (!activeAnimal) {
+      return { items: [] as ImportItem[], mode: "none" as "none" | "direct" | "lot" };
+    }
+
+    const animalTokens = [
+      activeAnimal.earTagNumber,
+      activeAnimal.brandNumber,
+      activeAnimal.name,
+      activeAnimal.ixorigueAnimalId,
+    ]
+      .map((item) => normalizeSearchValue(item))
+      .filter(Boolean);
+
+    const directMatches = imports.filter((item) => {
+      const haystack = normalizeSearchValue([item.filename, item.mimeType, item.status].filter(Boolean).join(" "));
+      return animalTokens.some((token) => haystack.includes(token));
+    });
+
+    if (directMatches.length) {
+      return { items: directMatches, mode: "direct" as const };
+    }
+
+    const lotMatches = imports.filter((item) => item.lotId === activeAnimal.lotId);
+    if (lotMatches.length) {
+      return { items: lotMatches, mode: "lot" as const };
+    }
+
+    return { items: [] as ImportItem[], mode: "none" as const };
+  }, [activeAnimal, imports]);
 
   const mapLots = useMemo<MapLot[]>(
     () =>
@@ -219,25 +401,27 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(220px,280px),minmax(220px,280px),1fr]">
-            <label className="grid gap-2 text-sm text-slate-600">
-              <span className="font-medium text-slate-700">Ranch</span>
-              <select value={selectedRanchId} onChange={(event) => setSelectedRanchId(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                {ranches.map((ranch) => (
-                  <option key={ranch._id} value={ranch._id}>{ranch.name} · {ranch.syncStatus}</option>
-                ))}
-              </select>
-            </label>
+          <div className="mt-5 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:max-w-[580px]">
+              <label className="grid gap-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-700">Ranch</span>
+                <select value={selectedRanchId} onChange={(event) => handleSelectRanch(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                  {ranches.map((ranch) => (
+                    <option key={ranch._id} value={ranch._id}>{ranch.name} · {ranch.syncStatus}</option>
+                  ))}
+                </select>
+              </label>
 
-            <label className="grid gap-2 text-sm text-slate-600">
-              <span className="font-medium text-slate-700">Lot</span>
-              <select value={selectedLotId} onChange={(event) => setSelectedLotId(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                <option value="">All lots</option>
-                {lots.map((lot) => (
-                  <option key={lot._id} value={lot._id}>{lot.name}</option>
-                ))}
-              </select>
-            </label>
+              <label className="grid gap-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-700">Lot</span>
+                <select value={selectedLotId} onChange={(event) => handleSelectLot(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value="">All lots</option>
+                  {lots.map((lot) => (
+                    <option key={lot._id} value={lot._id}>{lot.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ranch Summary</p>
@@ -263,9 +447,9 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr),360px]">
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(300px,1fr)]">
           <div className="space-y-4">
-            <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={(id) => setSelectedLotId(id)} />
+            <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={handleSelectLot} />
 
             <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -319,79 +503,207 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-slate-900">
-                    {selectedLot ? `Animals in ${selectedLot.name}` : "Lots in ranch"}
+                    {selectedLot ? `Animals in ${selectedLot.name}` : "Animals in ranch"}
                   </h2>
                   <p className="text-sm text-slate-500">
-                    {selectedLot ? "Side panel focused on the selected lot." : "Choose a lot from the header or the map."}
+                    {selectedLot ? "Side panel focused on the selected lot." : "Choose a lot from the header or the map to narrow the list."}
                   </p>
                 </div>
-                {selectedLot ? (
-                  <button type="button" onClick={() => setSelectedLotId("")} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
-                    Clear lot
-                  </button>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                    {sortedVisibleAnimals.length} animal{sortedVisibleAnimals.length === 1 ? "" : "s"}
+                  </span>
+                  {selectedLot ? (
+                    <button type="button" onClick={() => handleSelectLot("")} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
+                      Clear lot
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
-              {selectedLot ? (
-                <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
-                  {visibleAnimals.length ? visibleAnimals.map((animal) => (
-                    <article key={animal._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{animal.earTagNumber}</p>
-                          <p className="mt-1 text-sm text-slate-500">{animal.name ?? animal.breed ?? "Unnamed animal"}</p>
-                        </div>
+              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                {sortedVisibleAnimals.length ? sortedVisibleAnimals.map((animal) => (
+                  <article key={animal._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{animal.earTagNumber}</p>
+                        <p className="mt-1 text-sm text-slate-500">{animal.name ?? animal.breed ?? "Unnamed animal"}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
                           {animal.currentWeight} kg
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveAnimalId(animal._id)}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Info
+                        </button>
                       </div>
-                      <div className="mt-3 space-y-1 text-sm text-slate-600">
-                        <p>Sex: {animal.sex || "-"}</p>
-                        <p>Breed: {animal.breed || "-"}</p>
-                        <p>Life status: {animal.lifeStatus}</p>
-                        <p>Ixorigue: {animal.ixorigueAnimalId ?? "Local only"}</p>
-                      </div>
-                    </article>
-                  )) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                      No animals found in this lot.
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
-                  {lots.length ? lots.map((lot) => {
-                    const lotAnimals = animals.filter((animal) => animal.lotId === lot._id);
-
-                    return (
-                      <button
-                        key={lot._id}
-                        type="button"
-                        onClick={() => setSelectedLotId(lot._id)}
-                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left hover:bg-slate-50"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{lot.name}</p>
-                            <p className="mt-1 text-sm text-slate-500">Ixorigue: {lot.ixorigueLotId ?? "Local only"}</p>
-                          </div>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                            {lot.animalCount ?? lotAnimals.length}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  }) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                      No lots available for this ranch.
+                    <div className="mt-3 space-y-1 text-sm text-slate-600">
+                      {!selectedLotId ? <p>Lot: {lotById.get(animal.lotId)?.name ?? "Unknown lot"}</p> : null}
+                      <p>Sex: {animal.sex || "-"}</p>
+                      <p>Breed: {animal.breed || "-"}</p>
+                      <p>Life status: {animal.lifeStatus}</p>
+                      <p>Ixorigue: {animal.ixorigueAnimalId ?? "Local only"}</p>
                     </div>
-                  )}
-                </div>
-              )}
+                  </article>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    {selectedLotId ? "No animals found in this lot." : "No animals found for this ranch yet."}
+                  </div>
+                )}
+              </div>
             </section>
           </aside>
         </section>
       </div>
+
+      {activeAnimal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          onClick={() => setActiveAnimalId(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Animal info</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900">{activeAnimal.earTagNumber}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {activeAnimal.name ?? activeAnimal.breed ?? "Unnamed animal"} · {lotById.get(activeAnimal.lotId)?.name ?? "Unknown lot"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveAnimalId(null)}
+                className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
+              <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <h3 className="text-sm font-semibold text-slate-900">Animal details</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Lot</p>
+                    <p className="text-sm font-medium text-slate-900">{lotById.get(activeAnimal.lotId)?.name ?? "Unknown lot"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Species</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.specie ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Breed</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.breed || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Sex</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.sex || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Color</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.color || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Brand number</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.brandNumber || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Current weight</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.currentWeight} kg</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Initial weight</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.initialWeight != null ? `${activeAnimal.initialWeight} kg` : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Life status</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.lifeStatus}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Ixorigue ID</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.ixorigueAnimalId ?? "Local only"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Birth date</p>
+                    <p className="text-sm font-medium text-slate-900">{formatDateTime(activeAnimal.birthDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Purchase date</p>
+                    <p className="text-sm font-medium text-slate-900">{formatDateTime(activeAnimal.dateOfPurchase)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Register reason</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.registerReason ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Sync status</p>
+                    <p className="text-sm font-medium text-slate-900">{activeAnimal.syncStatus ?? "-"}</p>
+                  </div>
+                </div>
+                {activeAnimal.syncError ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Sync error: {activeAnimal.syncError}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Animal imports</h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {activeAnimalImports.mode === "direct"
+                        ? "Matched directly from import filename or metadata."
+                        : activeAnimalImports.mode === "lot"
+                          ? `Imports are stored at lot level right now, so these are the imports for ${lotById.get(activeAnimal.lotId)?.name ?? "this lot"}.`
+                          : "No imports linked to this animal were found."}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                    {activeAnimalImports.items.length} import{activeAnimalImports.items.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {activeAnimalImports.items.length ? (
+                  <div className="mt-4 space-y-3">
+                    {activeAnimalImports.items.map((item) => (
+                      <article key={item._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{item.filename}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {lotById.get(item.lotId ?? "")?.name ?? "Unassigned lot"} · {item.mimeType ?? "Unknown file type"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-600">
+                            {item.status}
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-1 text-sm text-slate-600">
+                          <p>Received: {formatDateTime(item.createdAt)}</p>
+                          <p>Size: {formatSize(item.sizeBytes)}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    No imports available for this animal yet.
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

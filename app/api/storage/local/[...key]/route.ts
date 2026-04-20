@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/server/auth";
+import { getLocalStorageBaseDir } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ key: stri
   const params = await context.params;
   const key = params.key.join("/");
 
-  const baseDir = process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), "tmp-storage");
+  const baseDir = getLocalStorageBaseDir();
   const filePath = path.join(baseDir, key);
 
   try {

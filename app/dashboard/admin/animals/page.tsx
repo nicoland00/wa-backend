@@ -45,6 +45,20 @@ const emptyMetadata: MetadataResponse = {
   remoteError: null,
 };
 
+async function readJsonSafely<T>(response: Response): Promise<T> {
+  const raw = await response.text();
+
+  if (!raw) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
 export default function AdminAnimalsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -207,7 +221,7 @@ export default function AdminAnimalsPage() {
       body: payload,
     });
 
-    const data = (await response.json()) as { error?: string; animal?: Animal };
+    const data = await readJsonSafely<{ error?: string; animal?: Animal }>(response);
     setMessage(response.ok ? "Animal created and synced." : data.error ?? "Failed to create animal.");
     if (response.ok) {
       await refreshAnimals();
