@@ -58,6 +58,15 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     })),
   );
 
+  const serializedImports = await Promise.all(
+    imports.map(async (item) => ({
+      ...serializeImport(item),
+      videoUrl: item.mimeType?.startsWith("video/")
+        ? await resolveStoredMediaUrl(item.storage)
+        : null,
+    })),
+  );
+
   return NextResponse.json({
     ranch: serializeRanch(ranch),
     lots: lots.map((lot) => ({
@@ -65,6 +74,6 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       animalCount: animals.filter((animal) => animal.lotId.toString() === lot._id.toString()).length,
     })),
     animals: serializedAnimals,
-    importsByLot: imports.map(serializeImport),
+    importsByLot: serializedImports,
   });
 }

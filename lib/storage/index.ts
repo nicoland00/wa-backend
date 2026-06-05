@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { GridFSBucket, ObjectId } from "mongodb";
+import { getDb } from "@/lib/mongodb";
 
 export type StoredFileRef = {
   provider: "r2" | "s3" | "vercel_blob" | "local" | "gridfs";
@@ -80,12 +82,20 @@ export async function uploadBufferToStorage(params: {
     return { provider, bucket: process.env.S3_BUCKET, key };
   }
 
-  const baseDir = getLocalStorageBaseDir();
-  const absolutePath = path.join(baseDir, key);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, params.buffer);
+  // GridFS: store directly in MongoDB — no external storage needed
+  const db = await getDb();
+  const bucket = new GridFSBucket(db, { bucketName: "media" });
+  const fileId = new ObjectId();
+  await new Promise<void>((resolve, reject) => {
+    const uploadStream = bucket.openUploadStreamWithId(fileId, params.filename, {
+      metadata: { originalKey: key, contentType: params.contentType },
+    });
+    uploadStream.on("finish", resolve);
+    uploadStream.on("error", reject);
+    uploadStream.end(params.buffer);
+  });
 
-  return { provider: "local", key, url: `/api/storage/local/${encodeURIComponent(key)}` };
+  return { provider: "gridfs", key: fileId.toString(), url: `/api/storage/gridfs/${fileId.toString()}` };
 }
 
 export async function getSignedDownloadUrl(storage: StoredFileRef): Promise<string | null> {
@@ -117,6 +127,10 @@ export async function getSignedDownloadUrl(storage: StoredFileRef): Promise<stri
 
   if (storage.provider === "local") {
     return `/api/storage/local/${encodeURIComponent(storage.key)}`;
+  }
+
+  if (storage.provider === "gridfs") {
+    return `/api/storage/gridfs/${storage.key}`;
   }
 
   return null;

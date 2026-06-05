@@ -19,11 +19,18 @@ type Animal = {
   currentWeight: number;
   syncStatus: "pending" | "synced" | "failed";
   syncError: string | null;
-  /** Set when the animal exists in Ixorigue (search by this ID in the ranch). */
   ixorigueAnimalId?: string | null;
   brandNumber?: string;
   color?: string;
   initialWeight?: number;
+};
+type VideoImport = {
+  _id: string;
+  filename: string;
+  sizeBytes: number | null;
+  animalId: string | null;
+  videoUrl?: string | null;
+  storage: { provider: string; key: string; url?: string };
 };
 type Option = { value: string; label: string };
 type DeviceOption = { value: string; label: string; disabled: boolean; assignedAnimalLabel: string | null };
@@ -72,6 +79,8 @@ export default function AdminAnimalsPage() {
   const [syncing, setSyncing] = useState(false);
   const [weightModal, setWeightModal] = useState<Animal | null>(null);
   const [weightInput, setWeightInput] = useState("");
+  const [videoImports, setVideoImports] = useState<VideoImport[]>([]);
+  const [videoAssignModal, setVideoAssignModal] = useState<Animal | null>(null);
   const canView = session ? canViewAdminScreens(session.user.role) : false;
   const canManage = session ? canMutateAdminData(session.user.role) : false;
   const [form, setForm] = useState({
@@ -189,6 +198,11 @@ export default function AdminAnimalsPage() {
     void loadMetadata();
   }, [ranchId]);
 
+  useEffect(() => {
+    void loadVideoImports(lotId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lotId]);
+
   async function refreshAnimals() {
     const response = await fetch(`/api/admin/animals?ranchId=${ranchId}${lotId ? `&lotId=${lotId}` : ""}`, { cache: "no-store" });
     if (!response.ok) {
@@ -273,6 +287,30 @@ export default function AdminAnimalsPage() {
       await refreshAnimals();
     }
     setSyncing(false);
+  }
+
+  async function loadVideoImports(currentLotId: string) {
+    if (!currentLotId) { setVideoImports([]); return; }
+    const response = await fetch(`/api/imports?lotId=${currentLotId}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = (await response.json()) as { imports: VideoImport[] };
+    const videos = data.imports.filter((i) => i.filename.endsWith(".mp4") || (i as unknown as { mimeType?: string }).mimeType?.startsWith("video/"));
+    setVideoImports(videos);
+  }
+
+  async function assignVideo(importId: string, animalId: string) {
+    const response = await fetch(`/api/imports/${importId}/assign-animal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ animalId }),
+    });
+    const data = (await response.json()) as { error?: string };
+    setMessage(response.ok ? "Video assigned to animal." : data.error ?? "Assignment failed.");
+    if (response.ok) {
+      setVideoAssignModal(null);
+      await loadVideoImports(lotId);
+      await refreshAnimals();
+    }
   }
 
   async function submitWeight(animalId: string, weightKg: number) {
@@ -501,6 +539,7 @@ export default function AdminAnimalsPage() {
                       {canManage ? (
                         <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => { setWeightModal(animal); setWeightInput(""); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Add weight</button>
+                          <button type="button" onClick={() => setVideoAssignModal(animal)} disabled={!lotId} className="rounded-lg border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-1.5 text-xs font-medium text-[#2d7a5e] hover:bg-[#d1ede5] disabled:opacity-40">Assign video</button>
                           <button type="button" onClick={() => void retrySync(animal._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Retry sync</button>
                           <button type="button" onClick={() => void deleteAnimal(animal._id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50">Delete</button>
                         </div>
@@ -516,20 +555,63 @@ export default function AdminAnimalsPage() {
         </section>
 
         {canManage && weightModal ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setWeightModal(null)}>
-            <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg" onClick={(event) => event.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setWeightModal(null)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
               <h2 className="text-lg font-semibold text-slate-900">Add weight</h2>
-              <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
                 <p><span className="font-medium">Ear tag:</span> {weightModal.earTagNumber}</p>
                 <p><span className="font-medium">Name:</span> {weightModal.name ?? "-"}</p>
                 <p><span className="font-medium">Breed:</span> {weightModal.breed || "-"} · <span className="font-medium">Sex:</span> {weightModal.sex}</p>
                 <p><span className="font-medium">Current weight:</span> {weightModal.currentWeight} kg</p>
               </div>
               <label className="mt-4 block text-xs font-medium text-slate-600">New weight (kg)</label>
-              <input type="number" step="0.1" min="0" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} placeholder="e.g. 210" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <input type="number" step="0.1" min="0" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} placeholder="e.g. 210" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#57A28B] focus:outline-none focus:ring-2 focus:ring-[#57A28B]/20" />
               <div className="mt-5 flex justify-end gap-2">
-                <button type="button" onClick={() => setWeightModal(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
-                <button type="button" onClick={() => { const weight = Number(weightInput); if (Number.isFinite(weight) && weight > 0) void submitWeight(weightModal._id, weight); else setMessage("Enter a valid weight."); }} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">Save</button>
+                <button type="button" onClick={() => setWeightModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={() => { const weight = Number(weightInput); if (Number.isFinite(weight) && weight > 0) void submitWeight(weightModal._id, weight); else setMessage("Enter a valid weight."); }} className="rounded-xl bg-[#57A28B] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a8a76]">Save</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {canManage && videoAssignModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setVideoAssignModal(null)}>
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Assign video</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Animal: <span className="font-medium text-slate-800">{videoAssignModal.earTagNumber}</span></p>
+                </div>
+                <button type="button" onClick={() => setVideoAssignModal(null)} className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 hover:bg-slate-50">✕</button>
+              </div>
+
+              <div className="mt-4 max-h-[400px] space-y-3 overflow-y-auto">
+                {videoImports.length ? videoImports.map((v) => (
+                  <article key={v._id} className={`rounded-xl border p-3 ${v.animalId && v.animalId !== videoAssignModal._id ? "border-slate-100 bg-slate-50 opacity-60" : "border-slate-200 bg-white hover:border-[#57A28B]/40"}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{v.filename}</p>
+                        <p className="text-xs text-slate-400">
+                          {v.sizeBytes ? `${(v.sizeBytes / 1024 / 1024).toFixed(2)} MB` : "Unknown size"}
+                          {v.animalId ? " · Already assigned" : " · Unassigned"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void assignVideo(v._id, videoAssignModal._id)}
+                        disabled={!!(v.animalId && v.animalId !== videoAssignModal._id)}
+                        className="shrink-0 rounded-xl bg-[#57A28B] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#4a8a76] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {v.animalId === videoAssignModal._id ? "Reassign" : "Assign"}
+                      </button>
+                    </div>
+                  </article>
+                )) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+                    <p className="text-sm text-slate-400">No video imports found for this lot.</p>
+                    <p className="mt-1 text-xs text-slate-400">Run the upload script first to add videos.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

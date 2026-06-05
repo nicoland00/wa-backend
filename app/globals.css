@@ -1,12 +1,14 @@
 @import "../node_modules/tailwindcss/index.css";
 
 :root {
-  --background: #f7f9fb;
+  --background: #f4f7f5;
   --foreground: #0f172a;
+  --pastora: #57A28B;
+  --pastora-light: #d1ede5;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-family: "Poppins", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }

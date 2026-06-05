@@ -62,6 +62,7 @@ export function serializeImport(item: ImportDoc) {
     _id: item._id.toString(),
     ranchId: (item.ranchId ?? item.farmId)?.toString(),
     lotId: item.lotId ? item.lotId.toString() : null,
+    animalId: item.animalId ? item.animalId.toString() : null,
   };
 }
 

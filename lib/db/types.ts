@@ -121,6 +121,7 @@ export type ImportDoc = {
   // Deprecated legacy alias still present in some old documents/routes.
   farmId?: ObjectId;
   lotId: ObjectId | null;
+  animalId?: ObjectId | null;
   source: "whatsapp_export" | "manual_upload";
   filename: string;
   mimeType: string | null;
