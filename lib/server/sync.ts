@@ -505,8 +505,10 @@ async function upsertRemoteAnimal(
   ranch: RanchDoc,
   remoteAnimal: IxorigueAnimalDto,
   lotsByRemoteId: Map<string, LotDoc>,
+  animalIdToLotId: Map<string, string>,
 ) {
-  const lot = remoteAnimal.lotId ? lotsByRemoteId.get(remoteAnimal.lotId) : null;
+  const resolvedLotId = remoteAnimal.lotId ?? animalIdToLotId.get(remoteAnimal.id) ?? null;
+  const lot = resolvedLotId ? lotsByRemoteId.get(resolvedLotId) : null;
   if (!lot) {
     return { skipped: true, created: false };
   }
@@ -575,6 +577,18 @@ export async function syncRemoteAnimals(ranch: RanchDoc): Promise<RemoteSyncSumm
 
   try {
     const lotsByRemoteId = await buildLotLookup(db, ranch._id);
+
+    // Build reverse map: animalIxorigueId -> ixorigueLotId from each lot's animalIds list.
+    // This is a fallback for animals whose lotId field is null in the animals endpoint.
+    const remoteLots = await getLotsByRanch(ranch.ixorigueRanchId);
+    const animalIdToLotId = new Map<string, string>();
+    for (const remoteLot of remoteLots) {
+      if (!remoteLot.id || !remoteLot.animalIds?.length) continue;
+      for (const animalId of remoteLot.animalIds) {
+        animalIdToLotId.set(animalId, remoteLot.id);
+      }
+    }
+
     const remoteAnimals = await getAnimalsByRanch(ranch.ixorigueRanchId);
     let created = 0;
     let updated = 0;
@@ -586,7 +600,7 @@ export async function syncRemoteAnimals(ranch: RanchDoc): Promise<RemoteSyncSumm
         continue;
       }
 
-      const result = await upsertRemoteAnimal(db, ranch, remoteAnimal, lotsByRemoteId);
+      const result = await upsertRemoteAnimal(db, ranch, remoteAnimal, lotsByRemoteId, animalIdToLotId);
       if (result.skipped) {
         skipped += 1;
       } else if (result.created) {

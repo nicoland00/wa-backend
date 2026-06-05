@@ -31,7 +31,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 
   const [lots, animals, imports] = await Promise.all([
     db.collection<LotDoc>("lots").find({ ranchId: ranch._id }).sort({ name: 1 }).toArray(),
-    db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id }).sort({ earTagNumber: 1, createdAt: -1 }).toArray(),
+    db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id, syncStatus: "synced", lifeStatus: "alive" }).sort({ earTagNumber: 1, createdAt: -1 }).toArray(),
     db.collection<ImportDoc>("imports").find({ ranchId: ranch._id }).sort({ createdAt: -1 }).toArray(),
   ]);
 
