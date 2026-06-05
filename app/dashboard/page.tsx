@@ -197,6 +197,7 @@ export default function DashboardPage() {
   const [imports, setImports] = useState<ImportItem[]>([]);
   const [activeAnimalId, setActiveAnimalId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const selectedLotIdRef = useRef(selectedLotId);
 
   const hasAdminAccess = session ? canViewAdminScreens(session.user.role) : false;
@@ -476,166 +477,142 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* Main layout */}
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(300px,1fr)]">
-          <div className="space-y-4">
-            <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={handleSelectLot} />
+        {/* Map */}
+        <MapView lots={mapLots} animals={mapAnimals} selectedLotId={selectedLotId || null} onSelectLot={handleSelectLot} />
 
-            {/* Imports section */}
-            <section className="rounded-2xl bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">Imports</h2>
-                  <p className="text-sm text-slate-500">
-                    {selectedLotId ? `Videos linked to ${selectedLot?.name ?? "selected lot"}` : "All imports in this ranch"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-[#d1ede5] px-3 py-1 text-xs font-semibold text-[#2d7a5e]">
-                  {visibleImports.length}
-                </span>
-              </div>
-
-              {visibleImports.length ? (
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {visibleImports.map((item) => {
-                    const linkedAnimal = item.animalId ? animalById.get(item.animalId) : null;
-                    const linkedLot = item.lotId ? lotById.get(item.lotId) : null;
-                    const createdAt = new Date(item.createdAt);
-                    const isVideo = item.mimeType?.startsWith("video/") || item.filename.endsWith(".mp4");
-                    return (
-                      <article key={item._id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-[#57A28B]/30 hover:shadow-md">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-900">{item.filename}</p>
-                            <p className="mt-0.5 text-xs text-slate-500">{linkedLot?.name ?? "Unassigned lot"}</p>
-                          </div>
-                          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            isVideo ? "bg-[#d1ede5] text-[#2d7a5e]" : "bg-slate-100 text-slate-600"
-                          }`}>
-                            {isVideo ? "Video" : item.status}
-                          </span>
-                        </div>
-
-                        {/* Assigned animal info */}
-                        {linkedAnimal ? (
-                          <div className="mt-3 rounded-xl bg-[#f4f7f5] p-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#57A28B]">Animal</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">{linkedAnimal.earTagNumber}</p>
-                            <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-slate-500">
-                              <span>Breed: {linkedAnimal.breed || "—"}</span>
-                              <span>Sex: {linkedAnimal.sex || "—"}</span>
-                              <span>Weight: {linkedAnimal.currentWeight} kg</span>
-                              <span>Status: {linkedAnimal.lifeStatus}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-xs italic text-slate-400">No animal assigned yet</p>
-                        )}
-
-                        {/* Video thumbnail */}
-                        {isVideo && item.videoUrl ? (
-                          <VideoThumbnail videoUrl={item.videoUrl} filename={item.filename} />
-                        ) : null}
-
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                          <span>{Number.isNaN(createdAt.getTime()) ? item.createdAt : createdAt.toLocaleDateString()}</span>
-                          <span>{formatSize(item.sizeBytes)}</span>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
-                  <p className="text-sm font-medium text-slate-400">No imports yet</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {selectedLotId ? "No videos linked to this lot." : "No imports for this ranch."}
-                  </p>
-                </div>
-              )}
-            </section>
+        {/* Unified Animals section */}
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-slate-900">
+                {selectedLot ? selectedLot.name : "Animals"}
+              </h2>
+              <span className="rounded-full bg-[#d1ede5] px-3 py-1 text-xs font-semibold text-[#2d7a5e]">
+                {sortedVisibleAnimals.length}
+              </span>
+              {selectedLot ? (
+                <button type="button" onClick={() => handleSelectLot("")} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50">
+                  Clear lot
+                </button>
+              ) : null}
+            </div>
+            {/* Grid / List toggle */}
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${viewMode === "grid" ? "bg-[#57A28B] text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+                Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${viewMode === "list" ? "bg-[#57A28B] text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>
+                List
+              </button>
+            </div>
           </div>
 
-          {/* Animals sidebar */}
-          <aside className="space-y-4">
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">
-                    {selectedLot ? selectedLot.name : "Animals"}
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    {selectedLot ? "Animals in selected lot" : "Select a lot to filter"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-[#d1ede5] px-3 py-1 text-xs font-semibold text-[#2d7a5e]">
-                    {sortedVisibleAnimals.length}
-                  </span>
-                  {selectedLot ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectLot("")}
-                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50"
-                    >
-                      Clear
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-4 max-h-[580px] space-y-3 overflow-y-auto pr-1">
-                {sortedVisibleAnimals.length ? sortedVisibleAnimals.map((animal) => {
-                  const assignedVideo = imports.find((i) => i.animalId === animal._id && i.videoUrl);
-                  return (
-                    <article key={animal._id} className="group rounded-2xl border border-slate-100 p-3.5 transition hover:border-[#57A28B]/30 hover:shadow-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{animal.earTagNumber}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">{animal.name ?? animal.breed ?? "—"}</p>
+          {sortedVisibleAnimals.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-12 text-center">
+              <p className="text-sm font-medium text-slate-400">{selectedLotId ? "No animals in this lot." : "No animals yet — sync will populate them."}</p>
+            </div>
+          ) : viewMode === "grid" ? (
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {sortedVisibleAnimals.map((animal) => {
+                const videoUrl = animal.videoUrl ?? imports.find((i) => i.animalId === animal._id)?.videoUrl ?? null;
+                return (
+                  <article
+                    key={animal._id}
+                    className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/60 transition hover:border-[#57A28B]/40 hover:shadow-md cursor-pointer"
+                    onClick={() => setActiveAnimalId(animal._id)}
+                  >
+                    {/* Video / placeholder thumbnail */}
+                    <div className="relative bg-slate-200" style={{ aspectRatio: "16/9" }}>
+                      {videoUrl ? (
+                        <>
+                          <video src={videoUrl} className="h-full w-full object-cover" preload="metadata" muted playsInline />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-[#57A28B]"><path d="M8 5v14l11-7z"/></svg>
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-8 w-8 text-slate-300">
+                            <path d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                          </svg>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                            {animal.currentWeight} kg
-                          </span>
+                      )}
+                    </div>
+                    {/* Animal info */}
+                    <div className="p-3.5">
+                      <p className="text-sm font-semibold text-slate-900">{animal.earTagNumber}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{animal.breed || "—"} · {animal.sex || "—"}</p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-700">{animal.currentWeight} kg</span>
+                        {!selectedLotId ? <span className="text-xs text-slate-400">{lotById.get(animal.lotId)?.name ?? "—"}</span> : null}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    <th className="pb-2 pr-4">Ear tag</th>
+                    <th className="pb-2 pr-4">Breed</th>
+                    <th className="pb-2 pr-4">Sex</th>
+                    <th className="pb-2 pr-4">Weight</th>
+                    {!selectedLotId ? <th className="pb-2 pr-4">Lot</th> : null}
+                    <th className="pb-2 pr-4">Video</th>
+                    <th className="pb-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {sortedVisibleAnimals.map((animal) => {
+                    const hasVideo = !!(animal.videoUrl ?? imports.find((i) => i.animalId === animal._id)?.videoUrl);
+                    return (
+                      <tr key={animal._id} className="text-slate-700 hover:bg-slate-50/60">
+                        <td className="py-2.5 pr-4 font-semibold text-slate-900">{animal.earTagNumber}</td>
+                        <td className="py-2.5 pr-4">{animal.breed || "—"}</td>
+                        <td className="py-2.5 pr-4">{animal.sex || "—"}</td>
+                        <td className="py-2.5 pr-4">{animal.currentWeight} kg</td>
+                        {!selectedLotId ? <td className="py-2.5 pr-4 text-slate-500">{lotById.get(animal.lotId)?.name ?? "—"}</td> : null}
+                        <td className="py-2.5 pr-4">
+                          {hasVideo ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#d1ede5] px-2.5 py-0.5 text-[11px] font-semibold text-[#2d7a5e]">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3"><path d="M8 5v14l11-7z"/></svg>
+                              Video
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5">
                           <button
                             type="button"
                             onClick={() => setActiveAnimalId(animal._id)}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]"
+                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]"
                           >
                             Info
                           </button>
-                        </div>
-                      </div>
-                      <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-slate-500">
-                        {!selectedLotId ? <p className="col-span-2">Lot: {lotById.get(animal.lotId)?.name ?? "—"}</p> : null}
-                        <p>Sex: {animal.sex || "—"}</p>
-                        <p>Breed: {animal.breed || "—"}</p>
-                        <p>Status: {animal.lifeStatus}</p>
-                        {animal.ixorigueAnimalId ? (
-                          <p className="truncate font-mono text-[10px] text-slate-400">ID: {animal.ixorigueAnimalId.slice(0, 8)}…</p>
-                        ) : null}
-                      </div>
-                      {assignedVideo?.videoUrl ? (
-                        <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#f4f7f5] px-2.5 py-1.5">
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5 text-[#57A28B]">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                          <span className="text-xs font-medium text-[#2d7a5e]">Video assigned</span>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                }) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-                    <p className="text-sm font-medium text-slate-400">
-                      {selectedLotId ? "No animals in this lot." : "No animals yet."}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
-          </aside>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
 
@@ -700,51 +677,16 @@ export default function DashboardPage() {
               </section>
 
               <section className="rounded-2xl border border-slate-100 bg-white p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">Imports & Video</h3>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">
-                    {activeAnimalImports.items.length}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  {activeAnimalImports.mode === "direct"
-                    ? "Matched directly to this animal."
-                    : activeAnimalImports.mode === "lot"
-                      ? `Showing lot-level imports for ${lotById.get(activeAnimal.lotId)?.name ?? "this lot"}.`
-                      : "No imports found for this animal."}
-                </p>
-
-                {/* Animal's own video */}
+                <h3 className="text-sm font-semibold text-slate-900">Video</h3>
                 {activeAnimal.videoUrl ? (
                   <div className="mt-3">
-                    <VideoThumbnail videoUrl={activeAnimal.videoUrl} filename="Animal video" />
+                    <VideoThumbnail videoUrl={activeAnimal.videoUrl} filename="" />
                   </div>
-                ) : null}
-
-                {activeAnimalImports.items.length ? (
-                  <div className="mt-3 space-y-3">
-                    {activeAnimalImports.items.map((item) => (
-                      <article key={item._id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-sm font-medium text-slate-800">{item.filename}</p>
-                          <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            {item.status}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {formatDateTime(item.createdAt)} · {formatSize(item.sizeBytes)}
-                        </p>
-                        {item.videoUrl ? (
-                          <VideoThumbnail videoUrl={item.videoUrl} filename={item.filename} />
-                        ) : null}
-                      </article>
-                    ))}
+                ) : (
+                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
+                    No video assigned to this animal yet.
                   </div>
-                ) : !activeAnimal.videoUrl ? (
-                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-400">
-                    No video or imports for this animal.
-                  </div>
-                ) : null}
+                )}
               </section>
             </div>
           </div>
