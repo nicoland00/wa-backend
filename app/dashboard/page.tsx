@@ -281,13 +281,13 @@ export default function DashboardPage() {
     }
   }
 
-  // Auto-sync on ranch load
+  // Auto-sync on ranch load — runs after initial data is loaded so map refreshes with fresh animals
   useEffect(() => {
     const ranch = ranches.find((r) => r._id === selectedRanchId);
     if (!ranch?.ixorigueRanchId || !hasAdminAccess || !selectedRanchId) return;
     void triggerSync();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRanchId, hasAdminAccess]);
+  }, [selectedRanchId]);  // intentionally omit hasAdminAccess — stable after login
 
   const selectedRanch = ranches.find((r) => r._id === selectedRanchId) ?? null;
   const selectedLot = lots.find((lot) => lot._id === selectedLotId) ?? null;
@@ -392,6 +392,7 @@ export default function DashboardPage() {
                   <Link href="/dashboard/admin/ranches" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Ranches</Link>
                   <Link href="/dashboard/admin/lots" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Lots</Link>
                   <Link href="/dashboard/admin/animals" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Animals</Link>
+                  <Link href="/dashboard/admin/imports" className="rounded-xl border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-2 text-sm font-medium text-[#2d7a5e] transition hover:bg-[#d1ede5]">Videos</Link>
                   <Link href="/dashboard/admin/sync-jobs" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Sync Jobs</Link>
                   <Link href="/dashboard/admin/ixorigue" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Ixorigue</Link>
                 </>
