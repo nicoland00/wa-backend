@@ -39,6 +39,7 @@ type GoogleMapsWindow = Window & {
 type GoogleMap = {
   fitBounds: (bounds: GoogleBounds) => void;
   setCenter: (latLng: { lat: number; lng: number }) => void;
+  setZoom: (zoom: number) => void;
 };
 type GooglePolygon = {
   setMap: (map: GoogleMap | null) => void;
@@ -95,7 +96,7 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
     if (!gmaps) return;
 
     const map = new gmaps.Map(containerRef.current, {
-      center: { lat: -31.623, lng: -60.651 },
+      center: { lat: 10.22217, lng: -65.88303 },
       zoom: 13,
       mapTypeId: "satellite",
       disableDefaultUI: false,
@@ -143,9 +144,21 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
       polygonsRef.current.push({ lotId: lot.lotId, polygon });
     }
 
-    if (!bounds.isEmpty()) map.fitBounds(bounds);
+    // Also include animal coordinates in bounds
+    const visibleForBounds = selectedLotId ? animals.filter((a) => a.lotId === selectedLotId) : animals;
+    for (const animal of visibleForBounds) {
+      bounds.extend(animal.coordinates);
+    }
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds);
+    } else {
+      // Fall back to default Venezuela coordinates when there's no data yet
+      map.setCenter({ lat: 10.22217, lng: -65.88303 });
+      map.setZoom(13);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, lots, selectedLotId]);
+  }, [mapReady, lots, animals, selectedLotId]);
 
   useEffect(() => {
     const map = mapRef.current;
