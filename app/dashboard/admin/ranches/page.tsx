@@ -1,6 +1,5 @@
 "use client";
 
-import Script from "next/script";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -296,7 +295,6 @@ export default function AdminRanchesPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f9fb] p-6">
-      <Script src="https://api.mapbox.com/mapbox-gl-js/v3.11.0/mapbox-gl.js" strategy="afterInteractive" />
       <div className="mx-auto max-w-7xl space-y-4">
         <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
 
