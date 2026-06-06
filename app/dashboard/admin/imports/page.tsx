@@ -197,6 +197,59 @@ export default function AdminImportsPage() {
     setImports((d.imports ?? []).filter((i) => i.filename.endsWith(".mp4") || i.mimeType?.startsWith("video/")));
   }
 
+  // Small enough to clear any upstream body-size cap (Vercel 4.5MB, nginx 1MB default).
+  const CHUNK_SIZE = 800 * 1024;
+
+  function newUploadId() {
+    const raw = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32).padEnd(8, "0");
+  }
+
+  async function uploadOneFile(file: File): Promise<"uploaded" | "skipped" | "failed"> {
+    const uploadId = newUploadId();
+    const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+
+    for (let index = 0; index < total; index++) {
+      const start = index * CHUNK_SIZE;
+      const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
+
+      const result = await new Promise<{ status: number; completed?: boolean; skipped?: boolean; error?: string; ok?: boolean }>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        const qs = new URLSearchParams({ uploadId, lotId, index: String(index), total: String(total) });
+        xhr.open("POST", `/api/admin/imports/upload-chunk?${qs.toString()}`);
+        xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
+        xhr.setRequestHeader("x-file-type", file.type || "video/mp4");
+        xhr.setRequestHeader("x-file-size", String(file.size));
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const sent = start + e.loaded;
+            setUploadPercent(Math.min(100, Math.round((sent / Math.max(1, file.size)) * 100)));
+          }
+        };
+        xhr.onload = () => {
+          let data: { completed?: boolean; skipped?: boolean; error?: string; ok?: boolean } = {};
+          try { data = JSON.parse(xhr.responseText); } catch { /* empty */ }
+          resolve({ ...data, status: xhr.status });
+        };
+        xhr.onerror = () => resolve({ status: xhr.status || 0 });
+        xhr.send(blob);
+      });
+
+      if (result.status < 200 || result.status >= 300 || result.ok === false) {
+        setMessage(result.error ?? `Upload failed (${result.status}) on chunk ${index + 1}/${total}.`);
+        return "failed";
+      }
+      if (result.completed) {
+        setUploadPercent(100);
+        return result.skipped ? "skipped" : "uploaded";
+      }
+    }
+
+    return "uploaded";
+  }
+
   async function handleUpload(files: FileList) {
     if (!lotId || !files.length) return;
     setUploading(true);
@@ -211,31 +264,10 @@ export default function AdminImportsPage() {
       setUploadProgress(`Uploading ${file.name} (${i + 1}/${fileList.length})`);
       setUploadPercent(0);
 
-      const ok = await new Promise<boolean>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/admin/imports/upload?lotId=${encodeURIComponent(lotId)}`);
-        xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
-        xhr.setRequestHeader("x-file-size", String(file.size));
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-          let data: { ok?: boolean; skipped?: boolean; error?: string } = {};
-          try { data = JSON.parse(xhr.responseText); } catch { /* empty */ }
-          if (xhr.status >= 200 && xhr.status < 300) {
-            if (data.skipped) skipped++; else uploaded++;
-            resolve(true);
-          } else {
-            setMessage(data.error ?? `Upload failed (${xhr.status}).`);
-            resolve(false);
-          }
-        };
-        xhr.onerror = () => { resolve(false); };
-        xhr.send(file);
-      });
-
-      if (!ok) { failed++; }
+      const res = await uploadOneFile(file);
+      if (res === "uploaded") uploaded++;
+      else if (res === "skipped") skipped++;
+      else failed++;
     }
 
     const parts: string[] = [];
