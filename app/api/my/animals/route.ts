@@ -4,7 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { requireSessionUser } from "@/lib/server/auth";
 import { resolveStoredMediaUrl } from "@/lib/server/media";
 import { serializeAnimal } from "@/lib/server/serializers";
-import type { AnimalDoc, AnimalWeightDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, ImportDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET() {
   const user = await requireSessionUser();
@@ -20,46 +20,33 @@ export async function GET() {
 
   const animals = await db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id }).sort({ createdAt: -1 }).toArray();
 
+  // Videos assigned to each animal come straight from the imports collection. Oldest first.
   const animalIds = animals.map((a) => a._id);
-  const weightDocs = animalIds.length
-    ? await db.collection<AnimalWeightDoc>("animal_weights")
+  const videoImports = animalIds.length
+    ? await db.collection<ImportDoc>("imports")
         .find({ animalId: { $in: animalIds } })
-        .sort({ measuredAt: 1, createdAt: 1 })
+        .sort({ createdAt: 1 })
         .toArray()
     : [];
-  const weightsByAnimal = new Map<string, AnimalWeightDoc[]>();
-  for (const w of weightDocs) {
-    const key = w.animalId.toString();
-    (weightsByAnimal.get(key) ?? weightsByAnimal.set(key, []).get(key)!).push(w);
+  const videoImportsByAnimal = new Map<string, ImportDoc[]>();
+  for (const item of videoImports) {
+    if (!item.animalId) continue;
+    const isVideo = item.mimeType?.startsWith("video/") || item.filename.endsWith(".mp4");
+    if (!isVideo) continue;
+    const key = item.animalId.toString();
+    (videoImportsByAnimal.get(key) ?? videoImportsByAnimal.set(key, []).get(key)!).push(item);
   }
 
   const enriched = await Promise.all(
     animals.map(async (animal) => {
-      const videoRefs = animal.videos?.length
-        ? animal.videos
-        : animal.videoStorageKey
-          ? [{
-              provider: animal.videoStorageProvider ?? "local",
-              bucket: animal.videoStorageBucket ?? undefined,
-              key: animal.videoStorageKey,
-              url: animal.videoStorageUrl ?? undefined,
-            }]
-          : [];
-
       const videos = (
         await Promise.all(
-          videoRefs.map(async (ref) => ({
-            url: await resolveStoredMediaUrl(ref),
-            addedAt: "addedAt" in ref && ref.addedAt ? ref.addedAt : null,
+          (videoImportsByAnimal.get(animal._id.toString()) ?? []).map(async (item) => ({
+            url: await resolveStoredMediaUrl(item.storage),
+            filename: item.filename,
           })),
         )
-      ).filter((v): v is { url: string; addedAt: Date | null } => !!v.url);
-
-      const recorded = weightsByAnimal.get(animal._id.toString()) ?? [];
-      const weights = [
-        { weight: animal.initialWeight ?? 0, recordedAt: animal.createdAt ?? null, initial: true },
-        ...recorded.map((w) => ({ weight: w.weight, recordedAt: w.measuredAt ?? w.createdAt ?? null, initial: false })),
-      ];
+      ).filter((v): v is { url: string; filename: string } => !!v.url);
 
       return {
         ...serializeAnimal(animal),
@@ -73,7 +60,6 @@ export async function GET() {
           : null,
         videoUrl: videos[0]?.url ?? null,
         videos,
-        weights,
       };
     }),
   );

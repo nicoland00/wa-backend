@@ -46,8 +46,7 @@ type Animal = {
   ixorigueAnimalId: string | null;
   photoUrl: string | null;
   videoUrl: string | null;
-  videos?: { url: string; addedAt: string | null }[];
-  weights?: { weight: number; recordedAt: string | null; initial?: boolean }[];
+  videos?: { url: string; filename?: string }[];
   coordinates?: { lat: number; lng: number } | null;
 };
 
@@ -117,12 +116,6 @@ function formatDateTime(value: string | null | undefined) {
 function formatSize(value: number | null | undefined) {
   if (!value) return "Unknown";
   return `${(value / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function ordinal(n: number) {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }
 
 function SyncStatusBadge({ status }: { status: string }) {
@@ -685,55 +678,27 @@ export default function DashboardPage() {
               </section>
 
               <section className="rounded-2xl border border-slate-100 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Updates</h3>
+                <h3 className="text-sm font-semibold text-slate-900">Videos</h3>
                 {(() => {
                   const videos = activeAnimal.videos?.length
                     ? activeAnimal.videos
                     : activeAnimal.videoUrl
-                      ? [{ url: activeAnimal.videoUrl, addedAt: null as string | null }]
+                      ? [{ url: activeAnimal.videoUrl }]
                       : [];
-                  const weights = activeAnimal.weights?.length
-                    ? activeAnimal.weights
-                    : [{ weight: activeAnimal.currentWeight, recordedAt: null as string | null, initial: true }];
-                  const count = Math.max(videos.length, weights.length);
-                  if (count === 0) {
+                  if (!videos.length) {
                     return (
                       <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
-                        No updates for this animal yet.
+                        No videos assigned to this animal yet.
                       </div>
                     );
                   }
                   return (
-                    <div className="mt-3 space-y-5">
-                      {Array.from({ length: count }).map((_, i) => {
-                        const video = videos[i];
-                        const weight = weights[i];
-                        const prevWeight = i > 0 ? weights[i - 1]?.weight : undefined;
-                        const delta = weight && prevWeight != null ? weight.weight - prevWeight : null;
-                        return (
-                          <div key={i} className={i > 0 ? "border-t border-slate-100 pt-4" : ""}>
-                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                              <span className="text-sm font-semibold text-slate-900">{ordinal(i + 1)} Update</span>
-                              {i > 0 && video?.addedAt ? (
-                                <span className="text-xs text-slate-400">· {formatDateTime(video.addedAt)}</span>
-                              ) : null}
-                              {weight ? (
-                                <span className="text-xs font-medium text-slate-600">· {weight.weight} kg</span>
-                              ) : null}
-                              {delta != null && delta !== 0 ? (
-                                <span className={`text-xs font-semibold ${delta > 0 ? "text-[#2d7a5e]" : "text-red-600"}`}>
-                                  ({delta > 0 ? "+" : ""}{delta} kg)
-                                </span>
-                              ) : null}
-                            </div>
-                            {video ? (
-                              <VideoThumbnail videoUrl={video.url} filename="" />
-                            ) : (
-                              <p className="mt-2 text-xs text-slate-400">No video for this update.</p>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="mt-3 space-y-3">
+                      {videos.map((video) => (
+                        <div key={video.url}>
+                          <VideoThumbnail videoUrl={video.url} filename={video.filename ?? ""} />
+                        </div>
+                      ))}
                     </div>
                   );
                 })()}

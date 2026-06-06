@@ -6,7 +6,7 @@ import { requireSessionUser } from "@/lib/server/auth";
 import { resolveStoredMediaUrl } from "@/lib/server/media";
 import { serializeAnimal, serializeImport, serializeLot, serializeRanch } from "@/lib/server/serializers";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { AnimalDoc, AnimalWeightDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireSessionUser();
@@ -35,55 +35,31 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     db.collection<ImportDoc>("imports").find({ ranchId: ranch._id }).sort({ createdAt: -1 }).toArray(),
   ]);
 
-  // Recorded weights for these animals, oldest first, to build the progress timeline.
-  const animalIds = animals.map((a) => a._id);
-  const weightDocs = animalIds.length
-    ? await db.collection<AnimalWeightDoc>("animal_weights")
-        .find({ animalId: { $in: animalIds } })
-        .sort({ measuredAt: 1, createdAt: 1 })
-        .toArray()
-    : [];
-  const weightsByAnimal = new Map<string, AnimalWeightDoc[]>();
-  for (const w of weightDocs) {
-    const key = w.animalId.toString();
-    (weightsByAnimal.get(key) ?? weightsByAnimal.set(key, []).get(key)!).push(w);
-  }
-
-  // Upload date per stored video, so legacy assignments (no addedAt) still get a date.
-  const importDateByKey = new Map<string, Date>();
+  // Videos assigned to each animal come straight from the imports collection —
+  // the same source the /videos section uses — so the two always match. Oldest first.
+  const videoImportsByAnimal = new Map<string, ImportDoc[]>();
   for (const item of imports) {
-    if (item.storage?.key && item.createdAt) importDateByKey.set(item.storage.key, item.createdAt);
+    if (!item.animalId) continue;
+    const isVideo = item.mimeType?.startsWith("video/") || item.filename.endsWith(".mp4");
+    if (!isVideo) continue;
+    const key = item.animalId.toString();
+    (videoImportsByAnimal.get(key) ?? videoImportsByAnimal.set(key, []).get(key)!).push(item);
   }
 
   const serializedAnimals = await Promise.all(
     animals.map(async (animal) => {
-      // Ordered list of videos: prefer the videos[] array, fall back to the legacy single field.
-      const videoRefs = animal.videos?.length
-        ? animal.videos
-        : animal.videoStorageKey
-          ? [{
-              provider: animal.videoStorageProvider ?? "local",
-              bucket: animal.videoStorageBucket ?? undefined,
-              key: animal.videoStorageKey,
-              url: animal.videoStorageUrl ?? undefined,
-            }]
-          : [];
+      const animalVideoImports = (videoImportsByAnimal.get(animal._id.toString()) ?? [])
+        .slice()
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
       const videos = (
         await Promise.all(
-          videoRefs.map(async (ref) => ({
-            url: await resolveStoredMediaUrl(ref),
-            addedAt: ("addedAt" in ref && ref.addedAt ? ref.addedAt : importDateByKey.get(ref.key) ?? null),
+          animalVideoImports.map(async (item) => ({
+            url: await resolveStoredMediaUrl(item.storage),
+            filename: item.filename,
           })),
         )
-      ).filter((v): v is { url: string; addedAt: Date | null } => !!v.url);
-
-      // Weight progression: initial weight (at creation) followed by every recording.
-      const recorded = weightsByAnimal.get(animal._id.toString()) ?? [];
-      const weights = [
-        { weight: animal.initialWeight ?? 0, recordedAt: animal.createdAt ?? null, initial: true },
-        ...recorded.map((w) => ({ weight: w.weight, recordedAt: w.measuredAt ?? w.createdAt ?? null, initial: false })),
-      ];
+      ).filter((v): v is { url: string; filename: string } => !!v.url);
 
       return {
         ...serializeAnimal(animal),
@@ -97,7 +73,6 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
           : null,
         videoUrl: videos[0]?.url ?? null,
         videos,
-        weights,
         coordinates: animal.lastKnownCoordinates ?? null,
       };
     }),
