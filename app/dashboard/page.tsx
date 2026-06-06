@@ -395,7 +395,7 @@ export default function DashboardPage() {
                   <Link href="/dashboard/admin/animals" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Animals</Link>
                   <Link href="/dashboard/admin/imports" className="rounded-xl border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-2 text-sm font-medium text-[#2d7a5e] transition hover:bg-[#d1ede5]">Videos</Link>
                   <Link href="/dashboard/admin/sync-jobs" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Sync Jobs</Link>
-                  <Link href="/dashboard/admin/ixorigue" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Ixorigue</Link>
+                  <Link href="/dashboard/admin/ixorigue" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">API Config</Link>
                 </>
               ) : null}
               <button
@@ -657,7 +657,7 @@ export default function DashboardPage() {
                     ["Current weight", `${activeAnimal.currentWeight} kg`],
                     ["Initial weight", activeAnimal.initialWeight != null ? `${activeAnimal.initialWeight} kg` : "—"],
                     ["Life status", activeAnimal.lifeStatus],
-                    ["Ixorigue ID", activeAnimal.ixorigueAnimalId ?? "Local only"],
+                    ["ID", activeAnimal.ixorigueAnimalId ?? "—"],
                     ["Birth date", formatDateTime(activeAnimal.birthDate)],
                     ["Purchase date", formatDateTime(activeAnimal.dateOfPurchase)],
                     ["Register reason", activeAnimal.registerReason ?? "—"],

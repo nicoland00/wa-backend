@@ -338,51 +338,107 @@ export default function AdminAnimalsPage() {
   const breedOptions = metadata.breedOptionsBySpecie[form.specie] ?? [];
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f4f7f5] p-6">
       <div className="mx-auto max-w-6xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
+        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-800">← Back</Link>
 
+        {/* Lot selector — always on top */}
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Animals</h1>
-          <p className="mt-1 text-sm text-slate-600">Create animals with the same core fields Ixorigue requires so sync succeeds on first submit.</p>
-          {!canManage ? (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Institutional users can review ranch animals and sync status here, but animal creation and edit actions remain admin-only.
-            </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:max-w-[480px]">
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-slate-700">Ranch</span>
+              <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-[#57A28B] focus:outline-none focus:ring-2 focus:ring-[#57A28B]/20">
+                {ranches.map((ranch) => (
+                  <option key={ranch._id} value={ranch._id}>{ranch.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-slate-700">Lot</span>
+              <select value={lotId} onChange={(event) => setLotId(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-[#57A28B] focus:outline-none focus:ring-2 focus:ring-[#57A28B]/20">
+                <option value="">All lots</option>
+                {lots.map((lot) => (
+                  <option key={lot._id} value={lot._id}>{lot.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {message ? <p className="mt-3 text-sm font-medium text-[#57A28B]">{message}</p> : null}
+          {canManage && ranchId ? (
+            <button type="button" onClick={() => void syncRemoteAnimals()} disabled={!ranchId || syncing} className="mt-3 flex items-center gap-1.5 rounded-xl border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-2 text-xs font-semibold text-[#2d7a5e] hover:bg-[#d1ede5] disabled:opacity-60">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+              {syncing ? "Syncing…" : "Sync animals"}
+            </button>
           ) : null}
-          <p className="mt-2 text-xs text-slate-500">
-            After create, the backend registers the animal in Ixorigue and <strong>adds it to the selected lot</strong> so it appears in the Ixorigue app under that lot.
-            If sync fails, read the error in the table; use <strong>Retry sync</strong>. The <strong>Ixorigue ID</strong> column shows the remote GUID when sync succeeded (search the animal in Ixorigue by ranch).
-            If dropdowns show a warning, Ixorigue metadata could not be loaded — check API credentials and the server terminal for <code className="rounded bg-slate-100 px-1">[Ixorigue]</code> logs.
-          </p>
+        </section>
 
-          {canManage ? (
+        {/* Animals table — on top */}
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-4 pl-1">Ear tag</th>
+                  <th className="pb-2 pr-4">Name</th>
+                  <th className="pb-2 pr-4">Specie</th>
+                  <th className="pb-2 pr-4">Sex</th>
+                  <th className="pb-2 pr-4">Breed</th>
+                  <th className="pb-2 pr-4">Weight</th>
+                  <th className="pb-2 pr-4">ID</th>
+                  <th className="pb-2 pr-4">Sync</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {animals.map((animal) => (
+                  <tr key={animal._id} className="text-slate-700 hover:bg-slate-50/60">
+                    <td className="py-2.5 pr-4 pl-1 font-semibold text-slate-900">{animal.earTagNumber}</td>
+                    <td className="py-2.5 pr-4">{animal.name ?? "—"}</td>
+                    <td className="py-2.5 pr-4">{animal.specie ?? "—"}</td>
+                    <td className="py-2.5 pr-4">{animal.sex}</td>
+                    <td className="py-2.5 pr-4">{animal.breed || "—"}</td>
+                    <td className="py-2.5 pr-4">{animal.currentWeight} kg</td>
+                    <td className="max-w-[120px] truncate py-2.5 pr-4 font-mono text-xs text-slate-500" title={animal.ixorigueAnimalId ?? ""}>
+                      {animal.ixorigueAnimalId ?? "—"}
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <span title={animal.syncError ?? animal.syncStatus} className="inline-flex items-center">
+                        <span className={`h-2.5 w-2.5 rounded-full ${animal.syncStatus === "synced" ? "bg-green-500" : animal.syncStatus === "failed" ? "bg-red-500" : "bg-amber-400"}`} />
+                      </span>
+                    </td>
+                    <td className="py-2.5">
+                      {canManage ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <button type="button" onClick={() => { setWeightModal(animal); setWeightInput(""); }} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:bg-slate-50">Weight</button>
+                          <button type="button" onClick={() => setVideoAssignModal(animal)} disabled={!lotId} className="rounded-lg border border-[#57A28B]/30 bg-[#d1ede5]/60 px-2.5 py-1 text-xs font-medium text-[#2d7a5e] hover:bg-[#d1ede5] disabled:opacity-40">Video</button>
+                          <button type="button" onClick={() => void retrySync(animal._id)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:bg-slate-50">Retry</button>
+                          <button type="button" onClick={() => void deleteAnimal(animal._id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50">Delete</button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Read only</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {animals.length === 0 ? (
+                  <tr><td colSpan={9} className="py-10 text-center text-sm text-slate-400">No animals found</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* New animal form — at the bottom */}
+        {canManage ? (
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-900">Add new animal</h2>
             <div className="mt-4 grid gap-4">
-            <section className="rounded-2xl border border-slate-200 p-4">
+            <section className="rounded-2xl border border-slate-100 p-4">
               <div className="mb-4">
-                <h2 className="text-base font-semibold text-slate-900">Required fields</h2>
-                <p className="text-sm text-slate-500">These are the fields directly tied to Pastora and the base sync workflow.</p>
+                <h3 className="text-sm font-semibold text-slate-900">Required fields</h3>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm text-slate-700">
-                  <span className="font-medium text-slate-900">Ranch</span>
-                  <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    {ranches.map((ranch) => (
-                      <option key={ranch._id} value={ranch._id}>{ranch.name}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-2 text-sm text-slate-700">
-                  <span className="font-medium text-slate-900">Lot</span>
-                  <select value={lotId} onChange={(event) => setLotId(event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    <option value="">Select lot</option>
-                    {lots.map((lot) => (
-                      <option key={lot._id} value={lot._id}>{lot.name}</option>
-                    ))}
-                  </select>
-                </label>
-
                 <label className="grid gap-2 text-sm text-slate-700">
                   <span className="font-medium text-slate-900">Specie</span>
                   <select value={form.specie} onChange={(event) => setForm((current) => ({ ...current, specie: event.target.value, breed: "" }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -485,74 +541,15 @@ export default function AdminAnimalsPage() {
               </div>
             </section>
             </div>
-          ) : null}
+            {metadata.remoteError ? <p className="mt-3 text-sm text-amber-600">Metadata fetch warning: {metadata.remoteError}</p> : null}
+            <div className="mt-5">
+              <button type="button" onClick={() => void createAnimal()} disabled={!lotId} className="rounded-xl bg-[#57A28B] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4a8a76] disabled:opacity-50">
+                Create animal
+              </button>
+            </div>
+          </section>
+        ) : null}
 
-          {metadata.remoteError ? <p className="mt-3 text-sm text-amber-700">Ixorigue dropdown fetch warning: {metadata.remoteError}</p> : null}
-          {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {canManage ? (
-              <>
-                <button type="button" onClick={() => void createAnimal()} disabled={!lotId} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
-                  Create animal
-                </button>
-                <button type="button" onClick={() => void syncRemoteAnimals()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-                  {syncing ? "Syncing..." : "Pull remote animals"}
-                </button>
-              </>
-            ) : (
-              <span className="text-sm text-slate-500">Read only</span>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="px-3 py-2">Ear tag</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Specie</th>
-                  <th className="px-3 py-2">Sex</th>
-                  <th className="px-3 py-2">Breed</th>
-                  <th className="px-3 py-2">Current weight</th>
-                  <th className="px-3 py-2">Ixorigue ID</th>
-                  <th className="px-3 py-2">Sync</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {animals.map((animal) => (
-                  <tr key={animal._id} className="border-b border-slate-100 text-slate-700">
-                    <td className="px-3 py-2">{animal.earTagNumber}</td>
-                    <td className="px-3 py-2">{animal.name ?? "-"}</td>
-                    <td className="px-3 py-2">{animal.specie ?? "-"}</td>
-                    <td className="px-3 py-2">{animal.sex}</td>
-                    <td className="px-3 py-2">{animal.breed || "-"}</td>
-                    <td className="px-3 py-2">{animal.currentWeight}</td>
-                    <td className="max-w-[140px] truncate px-3 py-2 font-mono text-xs" title={animal.ixorigueAnimalId ?? ""}>
-                      {animal.ixorigueAnimalId ?? "—"}
-                    </td>
-                    <td className="px-3 py-2">{animal.syncStatus}{animal.syncError ? ` · ${animal.syncError}` : ""}</td>
-                    <td className="px-3 py-2">
-                      {canManage ? (
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => { setWeightModal(animal); setWeightInput(""); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Add weight</button>
-                          <button type="button" onClick={() => setVideoAssignModal(animal)} disabled={!lotId} className="rounded-lg border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-1.5 text-xs font-medium text-[#2d7a5e] hover:bg-[#d1ede5] disabled:opacity-40">Assign video</button>
-                          <button type="button" onClick={() => void retrySync(animal._id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">Retry sync</button>
-                          <button type="button" onClick={() => void deleteAnimal(animal._id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50">Delete</button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">Read only</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
         {canManage && weightModal ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setWeightModal(null)}>

@@ -232,7 +232,7 @@ export default function AdminRanchesPage() {
 
     const ranch = ranches.find((item) => item._id === resolvedSelectedRanchId);
     const confirmed = window.confirm(
-      `Delete ${ranch?.name ?? "this ranch"} from Pastora?\n\nThis removes the local ranch, lots, animals, imports, sync jobs, and related data. It does not delete the ranch in Ixorigue.`,
+      `Delete ${ranch?.name ?? "this ranch"} from Pastora?\n\nThis removes the local ranch, lots, animals, imports, sync jobs, and related data.`,
     );
     if (!confirmed) {
       return;
@@ -371,7 +371,7 @@ export default function AdminRanchesPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{details?.ranch.name ?? "Select a ranch"}</h2>
-                  <p className="text-sm text-slate-600">{details?.owner?.name ?? details?.owner?.email ?? "No owner"} · {details?.ranch.ixorigueRanchId ?? "No Ixorigue link"}</p>
+                  <p className="text-sm text-slate-600">{details?.owner?.name ?? details?.owner?.email ?? "No owner"} · {details?.ranch.ixorigueRanchId ?? "Not linked"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {canManage ? (
@@ -446,7 +446,7 @@ export default function AdminRanchesPage() {
                         <th className="px-3 py-2">Sex</th>
                         <th className="px-3 py-2">Breed</th>
                         <th className="px-3 py-2">Weight</th>
-                        <th className="px-3 py-2">Ixorigue</th>
+                        <th className="px-3 py-2">ID</th>
                       </tr>
                     </thead>
                     <tbody>

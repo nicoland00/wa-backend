@@ -16,7 +16,7 @@ export default function LotPanel({ lot, files, onOpenFile }: LotPanelProps) {
           <>
             <h3 className="mt-2 text-xl font-semibold text-slate-800">{lot.name}</h3>
             <p className="mt-1 text-sm text-slate-500">ID Lote: {lot.lotId}</p>
-            <p className="text-sm text-slate-500">Ixorigue: {lot.ixorigueId}</p>
+            <p className="text-sm text-slate-500">ID: {lot.ixorigueId}</p>
           </>
         ) : (
           <p className="mt-3 text-sm text-slate-500">Selecciona un lote en el mapa para ver su detalle.</p>

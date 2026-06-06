@@ -134,7 +134,7 @@ export default function AdminLotsPage() {
         <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Lots</h1>
-          <p className="mt-1 text-sm text-slate-600">Browse pulled Ixorigue lots and create new lots on top of an already-linked ranch.</p>
+          <p className="mt-1 text-sm text-slate-600">Browse and manage lots for each ranch.</p>
           <div className="mt-4 space-y-3">
             <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
               {ranches.map((ranch) => (
@@ -167,7 +167,7 @@ export default function AdminLotsPage() {
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Ixorigue</th>
+                  <th className="px-3 py-2">ID</th>
                   <th className="px-3 py-2">Sync</th>
                   <th className="px-3 py-2">Actions</th>
                 </tr>
