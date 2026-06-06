@@ -38,6 +38,10 @@ export async function GET() {
             url: animal.videoStorageUrl ?? undefined,
           })
         : null,
+      videoUrls: animal.videos?.length
+        ? await Promise.all(animal.videos.map((v) => resolveStoredMediaUrl(v)))
+            .then((urls) => urls.filter((u): u is string => !!u))
+        : [],
     })),
   );
 

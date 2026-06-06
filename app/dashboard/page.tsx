@@ -46,6 +46,7 @@ type Animal = {
   ixorigueAnimalId: string | null;
   photoUrl: string | null;
   videoUrl: string | null;
+  videoUrls?: string[];
   coordinates?: { lat: number; lng: number } | null;
 };
 
@@ -677,16 +678,37 @@ export default function DashboardPage() {
               </section>
 
               <section className="rounded-2xl border border-slate-100 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Video</h3>
-                {activeAnimal.videoUrl ? (
-                  <div className="mt-3">
-                    <VideoThumbnail videoUrl={activeAnimal.videoUrl} filename="" />
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
-                    No video assigned to this animal yet.
-                  </div>
-                )}
+                <h3 className="text-sm font-semibold text-slate-900">Videos</h3>
+                {(() => {
+                  const allUrls = activeAnimal.videoUrls?.length
+                    ? activeAnimal.videoUrls
+                    : activeAnimal.videoUrl
+                      ? [activeAnimal.videoUrl]
+                      : [];
+                  if (!allUrls.length) {
+                    return (
+                      <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
+                        No video assigned to this animal yet.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-1">
+                      {allUrls.map((url, i) => (
+                        <div key={url}>
+                          {i === 1 ? (
+                            <div className="my-3 flex items-center gap-2">
+                              <div className="h-px flex-1 bg-slate-200" />
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">2nd update</span>
+                              <div className="h-px flex-1 bg-slate-200" />
+                            </div>
+                          ) : null}
+                          <VideoThumbnail videoUrl={url} filename="" />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </section>
             </div>
           </div>
