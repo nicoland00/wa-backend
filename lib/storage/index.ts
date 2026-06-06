@@ -98,6 +98,56 @@ export async function uploadBufferToStorage(params: {
   return { provider: "gridfs", key: fileId.toString(), url: `/api/storage/gridfs/${fileId.toString()}` };
 }
 
+export async function uploadStreamToStorage(params: {
+  filename: string;
+  stream: ReadableStream<Uint8Array>;
+  contentType?: string;
+}): Promise<StoredFileRef> {
+  const { Readable } = await import("node:stream");
+  const key = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${params.filename}`;
+
+  if (process.env.S3_ENDPOINT && process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY) {
+    const { s3 } = await loadAwsSdk();
+    const client = new s3.S3Client({
+      region: process.env.S3_REGION || "auto",
+      endpoint: process.env.S3_ENDPOINT,
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+      },
+    });
+
+    const nodeStream = Readable.fromWeb(params.stream as import("stream/web").ReadableStream<Uint8Array>);
+    await client.send(
+      new s3.PutObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+        Body: nodeStream,
+        ContentType: params.contentType,
+      }),
+    );
+
+    const provider = process.env.S3_PROVIDER === "r2" ? "r2" : "s3";
+    return { provider, bucket: process.env.S3_BUCKET, key };
+  }
+
+  // GridFS: stream directly — never buffers the whole file in memory
+  const db = await getDb();
+  const bucket = new GridFSBucket(db, { bucketName: "media" });
+  const fileId = new ObjectId();
+  await new Promise<void>((resolve, reject) => {
+    const uploadStream = bucket.openUploadStreamWithId(fileId, params.filename, {
+      metadata: { originalKey: key, contentType: params.contentType },
+    });
+    uploadStream.on("finish", resolve);
+    uploadStream.on("error", reject);
+    Readable.fromWeb(params.stream as import("stream/web").ReadableStream<Uint8Array>).pipe(uploadStream);
+  });
+
+  return { provider: "gridfs", key: fileId.toString(), url: `/api/storage/gridfs/${fileId.toString()}` };
+}
+
 export async function getSignedDownloadUrl(storage: StoredFileRef): Promise<string | null> {
   if (storage.provider === "vercel_blob") {
     return storage.url ?? null;

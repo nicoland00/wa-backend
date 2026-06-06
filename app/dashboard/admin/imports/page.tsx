@@ -200,39 +200,51 @@ export default function AdminImportsPage() {
   async function handleUpload(files: FileList) {
     if (!lotId || !files.length) return;
     setUploading(true);
-    setUploadPercent(0);
-    setUploadProgress(`Uploading ${files.length} video${files.length > 1 ? "s" : ""}…`);
 
-    const formData = new FormData();
-    formData.set("lotId", lotId);
-    for (const file of Array.from(files)) {
-      formData.append("files", file);
+    const fileList = Array.from(files);
+    let uploaded = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      setUploadProgress(`Uploading ${file.name} (${i + 1}/${fileList.length})`);
+      setUploadPercent(0);
+
+      const ok = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `/api/admin/imports/upload?lotId=${encodeURIComponent(lotId)}`);
+        xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
+        xhr.setRequestHeader("x-file-size", String(file.size));
+        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          let data: { ok?: boolean; skipped?: boolean; error?: string } = {};
+          try { data = JSON.parse(xhr.responseText); } catch { /* empty */ }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            if (data.skipped) skipped++; else uploaded++;
+            resolve(true);
+          } else {
+            setMessage(data.error ?? `Upload failed (${xhr.status}).`);
+            resolve(false);
+          }
+        };
+        xhr.onerror = () => { resolve(false); };
+        xhr.send(file);
+      });
+
+      if (!ok) { failed++; }
     }
 
-    await new Promise<void>((resolve) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/admin/imports");
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = async () => {
-        let data: { created?: number; skipped?: number; error?: string } = {};
-        try { data = JSON.parse(xhr.responseText); } catch { data = { error: "Upload failed." }; }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const msg = data.skipped
-            ? `${data.created} uploaded, ${data.skipped} skipped (duplicates).`
-            : `${data.created} video${(data.created ?? 0) > 1 ? "s" : ""} uploaded.`;
-          setMessage(msg);
-          await refreshImports();
-        } else {
-          setMessage(data.error ?? `Upload failed (${xhr.status}).`);
-        }
-        resolve();
-      };
-      xhr.onerror = () => { setMessage("Upload failed."); resolve(); };
-      xhr.send(formData);
-    });
+    const parts: string[] = [];
+    if (uploaded) parts.push(`${uploaded} uploaded`);
+    if (skipped) parts.push(`${skipped} skipped (duplicates)`);
+    if (failed) parts.push(`${failed} failed`);
+    if (parts.length) setMessage(parts.join(", ") + ".");
 
+    await refreshImports();
     setUploading(false);
     setUploadProgress(null);
     setUploadPercent(null);
