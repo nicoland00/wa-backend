@@ -150,6 +150,8 @@ export default function AdminImportsPage() {
   const [ranchId, setRanchId] = useState("");
   const [lotId, setLotId] = useState("");
   const [message, setMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -185,6 +187,42 @@ export default function AdminImportsPage() {
       setImports((importData.imports ?? []).filter((i) => i.filename.endsWith(".mp4") || i.mimeType?.startsWith("video/")));
     });
   }, [lotId, ranchId]);
+
+  async function refreshImports() {
+    if (!lotId) return;
+    const res = await fetch(`/api/imports?lotId=${lotId}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const d = (await res.json()) as { imports: VideoImport[] };
+    setImports((d.imports ?? []).filter((i) => i.filename.endsWith(".mp4") || i.mimeType?.startsWith("video/")));
+  }
+
+  async function handleUpload(files: FileList) {
+    if (!lotId || !files.length) return;
+    setUploading(true);
+    setUploadProgress(`Uploading ${files.length} video${files.length > 1 ? "s" : ""}…`);
+
+    const formData = new FormData();
+    formData.set("lotId", lotId);
+    for (const file of Array.from(files)) {
+      formData.append("files", file);
+    }
+
+    const res = await fetch("/api/admin/imports", { method: "POST", body: formData });
+    const data = (await res.json()) as { created?: number; skipped?: number; error?: string };
+
+    if (res.ok) {
+      const msg = data.skipped
+        ? `${data.created} uploaded, ${data.skipped} skipped (duplicates).`
+        : `${data.created} video${(data.created ?? 0) > 1 ? "s" : ""} uploaded.`;
+      setMessage(msg);
+      await refreshImports();
+    } else {
+      setMessage(data.error ?? "Upload failed.");
+    }
+
+    setUploading(false);
+    setUploadProgress(null);
+  }
 
   async function handleAssign(importId: string, animalId: string) {
     const res = await fetch(`/api/imports/${importId}/assign-animal`, {
@@ -263,14 +301,39 @@ export default function AdminImportsPage() {
           </div>
 
           {lotId ? (
-            <div className="mt-4 flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm">
-              <span className="text-slate-600"><strong className="text-slate-900">{imports.length}</strong> video{imports.length !== 1 ? "s" : ""}</span>
-              <span className="text-slate-400">·</span>
-              <span className="text-slate-600"><strong className="text-[#57A28B]">{assignedCount}</strong> assigned</span>
-              <span className="text-slate-400">·</span>
-              <span className="text-slate-600"><strong className="text-slate-900">{imports.length - assignedCount}</strong> unassigned</span>
-              <span className="text-slate-400">·</span>
-              <span className="text-slate-600"><strong className="text-slate-900">{animals.length}</strong> animals in lot</span>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <span className="text-slate-600"><strong className="text-slate-900">{imports.length}</strong> video{imports.length !== 1 ? "s" : ""}</span>
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-600"><strong className="text-[#57A28B]">{assignedCount}</strong> assigned</span>
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-600"><strong className="text-slate-900">{imports.length - assignedCount}</strong> unassigned</span>
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-600"><strong className="text-slate-900">{animals.length}</strong> animals</span>
+              </div>
+
+              {/* Upload button */}
+              <label className={`flex cursor-pointer items-center gap-2 rounded-xl border border-[#57A28B]/40 bg-[#57A28B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4a8a76] ${uploading ? "pointer-events-none opacity-60" : ""}`}>
+                {uploading ? (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 animate-spin"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    {uploadProgress ?? "Uploading…"}
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload videos
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  className="sr-only"
+                  disabled={uploading}
+                  onChange={(e) => { if (e.target.files?.length) void handleUpload(e.target.files); e.target.value = ""; }}
+                />
+              </label>
             </div>
           ) : null}
 
