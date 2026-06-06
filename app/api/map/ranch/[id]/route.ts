@@ -6,7 +6,7 @@ import { requireSessionUser } from "@/lib/server/auth";
 import { resolveStoredMediaUrl } from "@/lib/server/media";
 import { serializeAnimal, serializeImport, serializeLot, serializeRanch } from "@/lib/server/serializers";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { AnimalDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, AnimalWeightDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireSessionUser();
@@ -35,27 +35,72 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     db.collection<ImportDoc>("imports").find({ ranchId: ranch._id }).sort({ createdAt: -1 }).toArray(),
   ]);
 
+  // Recorded weights for these animals, oldest first, to build the progress timeline.
+  const animalIds = animals.map((a) => a._id);
+  const weightDocs = animalIds.length
+    ? await db.collection<AnimalWeightDoc>("animal_weights")
+        .find({ animalId: { $in: animalIds } })
+        .sort({ measuredAt: 1, createdAt: 1 })
+        .toArray()
+    : [];
+  const weightsByAnimal = new Map<string, AnimalWeightDoc[]>();
+  for (const w of weightDocs) {
+    const key = w.animalId.toString();
+    (weightsByAnimal.get(key) ?? weightsByAnimal.set(key, []).get(key)!).push(w);
+  }
+
+  // Upload date per stored video, so legacy assignments (no addedAt) still get a date.
+  const importDateByKey = new Map<string, Date>();
+  for (const item of imports) {
+    if (item.storage?.key && item.createdAt) importDateByKey.set(item.storage.key, item.createdAt);
+  }
+
   const serializedAnimals = await Promise.all(
-    animals.map(async (animal) => ({
-      ...serializeAnimal(animal),
-      photoUrl: animal.photoStorageKey
-        ? await resolveStoredMediaUrl({
-            provider: animal.photoStorageProvider ?? "local",
-            bucket: animal.photoStorageBucket ?? undefined,
-            key: animal.photoStorageKey,
-            url: animal.photoStorageUrl ?? undefined,
-          })
-        : null,
-      videoUrl: animal.videoStorageKey
-        ? await resolveStoredMediaUrl({
-            provider: animal.videoStorageProvider ?? "local",
-            bucket: animal.videoStorageBucket ?? undefined,
-            key: animal.videoStorageKey,
-            url: animal.videoStorageUrl ?? undefined,
-          })
-        : null,
-      coordinates: animal.lastKnownCoordinates ?? null,
-    })),
+    animals.map(async (animal) => {
+      // Ordered list of videos: prefer the videos[] array, fall back to the legacy single field.
+      const videoRefs = animal.videos?.length
+        ? animal.videos
+        : animal.videoStorageKey
+          ? [{
+              provider: animal.videoStorageProvider ?? "local",
+              bucket: animal.videoStorageBucket ?? undefined,
+              key: animal.videoStorageKey,
+              url: animal.videoStorageUrl ?? undefined,
+            }]
+          : [];
+
+      const videos = (
+        await Promise.all(
+          videoRefs.map(async (ref) => ({
+            url: await resolveStoredMediaUrl(ref),
+            addedAt: ("addedAt" in ref && ref.addedAt ? ref.addedAt : importDateByKey.get(ref.key) ?? null),
+          })),
+        )
+      ).filter((v): v is { url: string; addedAt: Date | null } => !!v.url);
+
+      // Weight progression: initial weight (at creation) followed by every recording.
+      const recorded = weightsByAnimal.get(animal._id.toString()) ?? [];
+      const weights = [
+        { weight: animal.initialWeight ?? 0, recordedAt: animal.createdAt ?? null, initial: true },
+        ...recorded.map((w) => ({ weight: w.weight, recordedAt: w.measuredAt ?? w.createdAt ?? null, initial: false })),
+      ];
+
+      return {
+        ...serializeAnimal(animal),
+        photoUrl: animal.photoStorageKey
+          ? await resolveStoredMediaUrl({
+              provider: animal.photoStorageProvider ?? "local",
+              bucket: animal.photoStorageBucket ?? undefined,
+              key: animal.photoStorageKey,
+              url: animal.photoStorageUrl ?? undefined,
+            })
+          : null,
+        videoUrl: videos[0]?.url ?? null,
+        videos,
+        weights,
+        coordinates: animal.lastKnownCoordinates ?? null,
+      };
+    }),
   );
 
   const serializedImports = await Promise.all(

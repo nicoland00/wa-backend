@@ -140,7 +140,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   const arrayPush: Record<string, unknown> = {};
   if (uploadedPhotoRef) arrayPush.photos = uploadedPhotoRef;
-  if (uploadedVideoRef) arrayPush.videos = uploadedVideoRef;
+  if (uploadedVideoRef) arrayPush.videos = { ...uploadedVideoRef, addedAt: new Date() };
 
   await db.collection<AnimalDoc>("animals").updateOne(
     { _id },

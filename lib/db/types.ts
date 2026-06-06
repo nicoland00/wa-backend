@@ -22,6 +22,10 @@ export type StoredMediaRef = {
   url?: string;
 };
 
+// A video attached to an animal, tagged with when it was added so the
+// dashboard can show each "update" in chronological order.
+export type AnimalVideoRef = StoredMediaRef & { addedAt?: Date };
+
 export type UserDoc = {
   _id: ObjectId;
   email: string;
@@ -92,7 +96,7 @@ export type AnimalDoc = {
   videoStorageBucket?: string | null;
   videoStorageUrl?: string | null;
   photos?: StoredMediaRef[];
-  videos?: StoredMediaRef[];
+  videos?: AnimalVideoRef[];
   lastKnownCoordinates?: { lat: number; lng: number; recordedAt: Date } | null;
   syncStatus: SyncStatus;
   syncError: string | null;

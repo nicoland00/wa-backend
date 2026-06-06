@@ -33,11 +33,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     { $set: { animalId: new ObjectId(body.animalId), updatedAt: now } },
   );
 
-  const mediaRef: StoredMediaRef = {
+  const mediaRef: StoredMediaRef & { addedAt: Date } = {
     provider: importDoc.storage.provider,
     key: importDoc.storage.key,
     ...(importDoc.storage.bucket ? { bucket: importDoc.storage.bucket } : {}),
     ...(importDoc.storage.url ? { url: importDoc.storage.url } : {}),
+    addedAt: now,
   };
 
   await db.collection<AnimalDoc>("animals").updateOne(
