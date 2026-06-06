@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
       tailwindcss: path.join(configDir, "node_modules/tailwindcss"),
     },
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "500mb",
+    },
+  },
 };
 
 export default nextConfig;

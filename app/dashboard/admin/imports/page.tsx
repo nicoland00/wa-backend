@@ -152,6 +152,7 @@ export default function AdminImportsPage() {
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -199,6 +200,7 @@ export default function AdminImportsPage() {
   async function handleUpload(files: FileList) {
     if (!lotId || !files.length) return;
     setUploading(true);
+    setUploadPercent(0);
     setUploadProgress(`Uploading ${files.length} video${files.length > 1 ? "s" : ""}…`);
 
     const formData = new FormData();
@@ -207,21 +209,33 @@ export default function AdminImportsPage() {
       formData.append("files", file);
     }
 
-    const res = await fetch("/api/admin/imports", { method: "POST", body: formData });
-    const data = (await res.json()) as { created?: number; skipped?: number; error?: string };
-
-    if (res.ok) {
-      const msg = data.skipped
-        ? `${data.created} uploaded, ${data.skipped} skipped (duplicates).`
-        : `${data.created} video${(data.created ?? 0) > 1 ? "s" : ""} uploaded.`;
-      setMessage(msg);
-      await refreshImports();
-    } else {
-      setMessage(data.error ?? "Upload failed.");
-    }
+    await new Promise<void>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/admin/imports");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = async () => {
+        let data: { created?: number; skipped?: number; error?: string } = {};
+        try { data = JSON.parse(xhr.responseText); } catch { data = { error: "Upload failed." }; }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const msg = data.skipped
+            ? `${data.created} uploaded, ${data.skipped} skipped (duplicates).`
+            : `${data.created} video${(data.created ?? 0) > 1 ? "s" : ""} uploaded.`;
+          setMessage(msg);
+          await refreshImports();
+        } else {
+          setMessage(data.error ?? `Upload failed (${xhr.status}).`);
+        }
+        resolve();
+      };
+      xhr.onerror = () => { setMessage("Upload failed."); resolve(); };
+      xhr.send(formData);
+    });
 
     setUploading(false);
     setUploadProgress(null);
+    setUploadPercent(null);
   }
 
   async function handleAssign(importId: string, animalId: string) {
@@ -334,6 +348,21 @@ export default function AdminImportsPage() {
                   onChange={(e) => { if (e.target.files?.length) void handleUpload(e.target.files); e.target.value = ""; }}
                 />
               </label>
+            </div>
+          ) : null}
+
+          {uploading && uploadPercent !== null ? (
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                <span>{uploadProgress ?? "Uploading…"}</span>
+                <span>{uploadPercent}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-[#57A28B] transition-all duration-200"
+                  style={{ width: `${uploadPercent}%` }}
+                />
+              </div>
             </div>
           ) : null}
 

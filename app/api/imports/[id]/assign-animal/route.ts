@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { AnimalDoc, ImportDoc } from "@/lib/db/types";
+import type { AnimalDoc, ImportDoc, StoredMediaRef } from "@/lib/db/types";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await requireSessionUser();
@@ -33,6 +33,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     { $set: { animalId: new ObjectId(body.animalId), updatedAt: now } },
   );
 
+  const mediaRef: StoredMediaRef = {
+    provider: importDoc.storage.provider,
+    key: importDoc.storage.key,
+    ...(importDoc.storage.bucket ? { bucket: importDoc.storage.bucket } : {}),
+    ...(importDoc.storage.url ? { url: importDoc.storage.url } : {}),
+  };
+
   await db.collection<AnimalDoc>("animals").updateOne(
     { _id: new ObjectId(body.animalId) },
     {
@@ -43,6 +50,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         videoStorageUrl: importDoc.storage.url ?? null,
         updatedAt: now,
       },
+      $addToSet: { videos: mediaRef },
     },
   );
 
@@ -72,13 +80,8 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
     await db.collection<AnimalDoc>("animals").updateOne(
       { _id: importDoc.animalId },
       {
-        $set: {
-          videoStorageKey: null,
-          videoStorageProvider: null,
-          videoStorageBucket: null,
-          videoStorageUrl: null,
-          updatedAt: now,
-        },
+        $set: { updatedAt: now },
+        $pull: { videos: { key: importDoc.storage.key } },
       },
     );
   }

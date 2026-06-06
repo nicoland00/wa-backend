@@ -91,6 +91,8 @@ export type AnimalDoc = {
   videoStorageProvider?: StoredMediaRef["provider"] | null;
   videoStorageBucket?: string | null;
   videoStorageUrl?: string | null;
+  photos?: StoredMediaRef[];
+  videos?: StoredMediaRef[];
   lastKnownCoordinates?: { lat: number; lng: number; recordedAt: Date } | null;
   syncStatus: SyncStatus;
   syncError: string | null;

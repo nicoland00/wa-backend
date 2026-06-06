@@ -59,10 +59,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const contentType = request.headers.get("content-type") || "";
-  let updateInput: Record<string, unknown>;
+  let updateInput: Record<string, unknown> = {};
   let mediaPatch: Partial<AnimalDoc> = {};
   let selfieFile: File | null = null;
   let deleteSelfie = false;
+  let uploadedPhotoRef: import("@/lib/db/types").StoredMediaRef | null = null;
+  let uploadedVideoRef: import("@/lib/db/types").StoredMediaRef | null = null;
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await request.formData();
@@ -104,6 +106,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         photoStorageBucket: uploadedPhoto.bucket ?? null,
         photoStorageUrl: uploadedPhoto.url ?? null,
       };
+      uploadedPhotoRef = { provider: uploadedPhoto.provider, key: uploadedPhoto.key, ...(uploadedPhoto.bucket ? { bucket: uploadedPhoto.bucket } : {}), ...(uploadedPhoto.url ? { url: uploadedPhoto.url } : {}) };
     }
 
     if (uploadedVideo) {
@@ -114,8 +117,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         videoStorageBucket: uploadedVideo.bucket ?? null,
         videoStorageUrl: uploadedVideo.url ?? null,
       };
+      uploadedVideoRef = { provider: uploadedVideo.provider, key: uploadedVideo.key, ...(uploadedVideo.bucket ? { bucket: uploadedVideo.bucket } : {}), ...(uploadedVideo.url ? { url: uploadedVideo.url } : {}) };
     }
-  } else {
+  } else if (contentType.includes("application/json")) {
     updateInput = await request.json();
   }
 
@@ -134,6 +138,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
   }
 
+  const arrayPush: Record<string, unknown> = {};
+  if (uploadedPhotoRef) arrayPush.photos = uploadedPhotoRef;
+  if (uploadedVideoRef) arrayPush.videos = uploadedVideoRef;
+
   await db.collection<AnimalDoc>("animals").updateOne(
     { _id },
     {
@@ -145,6 +153,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         farmId: ranch._id,
         updatedAt: new Date(),
       },
+      ...(Object.keys(arrayPush).length > 0 ? { $addToSet: arrayPush } : {}),
     },
   );
 
