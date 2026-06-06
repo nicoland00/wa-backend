@@ -678,24 +678,32 @@ export default function DashboardPage() {
               </section>
 
               <section className="rounded-2xl border border-slate-100 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Videos</h3>
                 {(() => {
                   const videos = activeAnimal.videos?.length
                     ? activeAnimal.videos
                     : activeAnimal.videoUrl
                       ? [{ url: activeAnimal.videoUrl }]
                       : [];
+                  const ordinal = (n: number) => {
+                    const s = ["th","st","nd","rd"];
+                    const v = n % 100;
+                    return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+                  };
                   if (!videos.length) {
                     return (
-                      <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
-                        No videos assigned to this animal yet.
-                      </div>
+                      <>
+                        <h3 className="text-sm font-semibold text-slate-900">Videos</h3>
+                        <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-400">
+                          No videos assigned to this animal yet.
+                        </div>
+                      </>
                     );
                   }
                   return (
-                    <div className="mt-3 space-y-3">
-                      {videos.map((video) => (
+                    <div className="space-y-4">
+                      {videos.map((video, i) => (
                         <div key={video.url}>
+                          <h3 className="mb-2 text-sm font-semibold text-slate-900">{ordinal(i + 1)} Update</h3>
                           <VideoThumbnail videoUrl={video.url} filename={video.filename ?? ""} />
                         </div>
                       ))}
