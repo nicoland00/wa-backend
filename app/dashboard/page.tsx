@@ -396,6 +396,7 @@ export default function DashboardPage() {
                   <Link href="/dashboard/admin/animals" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Animals</Link>
                   <Link href="/dashboard/admin/imports" className="rounded-xl border border-[#57A28B]/30 bg-[#d1ede5]/60 px-3 py-2 text-sm font-medium text-[#2d7a5e] transition hover:bg-[#d1ede5]">Videos</Link>
                   <Link href="/dashboard/admin/sync-jobs" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">Sync Jobs</Link>
+                  <Link href="/dashboard/admin/device-health" className="rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100">Device Health</Link>
                   <Link href="/dashboard/admin/ixorigue" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-[#57A28B]/40 hover:bg-[#d1ede5]/40 hover:text-[#57A28B]">API Config</Link>
                 </>
               ) : null}
