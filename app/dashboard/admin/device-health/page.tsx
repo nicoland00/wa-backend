@@ -159,6 +159,8 @@ export default function DeviceHealthPage() {
   const [data, setData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
+  const [diag, setDiag] = useState<string | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -193,6 +195,21 @@ export default function DeviceHealthPage() {
   useEffect(() => {
     if (selectedRanchId) void loadData(selectedRanchId, selectedDate);
   }, [selectedRanchId, selectedDate, loadData]);
+
+  const runDiagnostics = useCallback(async () => {
+    if (!selectedRanchId) return;
+    setDiagLoading(true);
+    setDiag(null);
+    try {
+      const res = await fetch(`/api/admin/device-health?ranchId=${selectedRanchId}&date=${selectedDate}&debug=raw`, { cache: "no-store" });
+      const json = await res.json();
+      setDiag(JSON.stringify(json, null, 2));
+    } catch (err) {
+      setDiag(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDiagLoading(false);
+    }
+  }, [selectedRanchId, selectedDate]);
 
   if (status === "loading") return <main className="p-6 text-sm text-slate-600">Loading...</main>;
   if (!canView) return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
@@ -282,6 +299,28 @@ export default function DeviceHealthPage() {
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> Gap (missed window)</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-100 border border-slate-200" /> Future</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-200" /> No device assigned</span>
+        </div>
+
+        {/* Diagnostics: shows the raw Ixorigue path JSON so we can confirm data vs parsing */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-700">Diagnostics</p>
+              <p className="text-xs text-slate-500">Raw Ixorigue response for one device — confirms whether data is arriving.</p>
+            </div>
+            <button
+              onClick={() => void runDiagnostics()}
+              disabled={diagLoading || !selectedRanchId}
+              className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-50"
+            >
+              {diagLoading ? "Checking…" : "Check raw API"}
+            </button>
+          </div>
+          {diag && (
+            <pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+              {diag}
+            </pre>
+          )}
         </div>
 
         {loading && (
