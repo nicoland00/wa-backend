@@ -172,8 +172,6 @@ export default function DeviceHealthPage() {
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
   const [diag, setDiag] = useState<string | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const [captureMsg, setCaptureMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -207,27 +205,6 @@ export default function DeviceHealthPage() {
 
   useEffect(() => {
     if (selectedRanchId) void loadData(selectedRanchId, selectedDate);
-  }, [selectedRanchId, selectedDate, loadData]);
-
-  const captureNow = useCallback(async () => {
-    if (!selectedRanchId) return;
-    setCapturing(true);
-    setCaptureMsg(null);
-    try {
-      const res = await fetch(`/api/admin/device-health/capture?ranchId=${selectedRanchId}`, { method: "POST", cache: "no-store" });
-      const json = await res.json();
-      if (res.ok) {
-        const r = json.result ?? {};
-        setCaptureMsg(`Captured ${r.fetched ?? 0} animals · ${r.inserted ?? 0} new pings stored`);
-        await loadData(selectedRanchId, selectedDate);
-      } else {
-        setCaptureMsg(`Error: ${json.error ?? res.status}`);
-      }
-    } catch (err) {
-      setCaptureMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setCapturing(false);
-    }
   }, [selectedRanchId, selectedDate, loadData]);
 
   const runDiagnostics = useCallback(async () => {
@@ -264,15 +241,7 @@ export default function DeviceHealthPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Device Health</h1>
-            <p className="text-sm text-slate-500">Reporting timeline per device — built from 30-min polls. History starts when capturing begins.</p>
-            <button
-              onClick={() => void captureNow()}
-              disabled={capturing || !selectedRanchId}
-              className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 disabled:opacity-50"
-              title="Poll Ixorigue now and store the latest device locations"
-            >
-              {capturing ? "Capturing…" : "📡 Capture now"}
-            </button>
+            <p className="text-sm text-slate-500">Reporting timeline per device — real GPS history from Ixorigue (expected every 30 min).</p>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -307,11 +276,6 @@ export default function DeviceHealthPage() {
           </div>
         </div>
 
-        {captureMsg && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            {captureMsg}
-          </div>
-        )}
 
         {/* Fleet summary */}
         {data && !loading && (
@@ -346,7 +310,6 @@ export default function DeviceHealthPage() {
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-blue-500" /> Ping received</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> Gap (missed window)</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-100 border border-slate-200" /> Future</span>
-          <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-200" /> No data captured yet</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-300" /> No device assigned</span>
         </div>
 

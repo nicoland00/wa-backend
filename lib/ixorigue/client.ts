@@ -421,6 +421,54 @@ export async function ixorigueRawGet(path: string): Promise<unknown> {
   return request<unknown>(path);
 }
 
+export type IxorigueAnimalLocationHistory = {
+  animalId: string | null;
+  earTag: string | null;
+  name: string | null;
+  deviceId: string | null;
+  serialNumber: string | null;
+  locations: { timestamp: string; lat: number; lng: number }[];
+};
+
+/**
+ * GET /api/Animals/{ranchId}/animals-locations — real per-animal location
+ * history over a date range. Dates must be UTC ISO. Omit animalId for all
+ * animals in one call.
+ */
+export async function getAnimalsLocations(
+  ixorigueRanchId: string,
+  fromDateIso: string,
+  toDateIso: string,
+  ixorigueAnimalId?: string,
+): Promise<IxorigueAnimalLocationHistory[]> {
+  const params = new URLSearchParams({ fromDate: fromDateIso, toDate: toDateIso });
+  if (ixorigueAnimalId) params.set("animalId", ixorigueAnimalId);
+  const payload = await request<unknown>(`/api/Animals/${ixorigueRanchId}/animals-locations?${params.toString()}`);
+  return pickDataArray(payload).map((raw): IxorigueAnimalLocationHistory => {
+    const a = raw as Record<string, unknown>;
+    const locsRaw = Array.isArray(a.locations) ? (a.locations as unknown[]) : [];
+    const locations = locsRaw
+      .map((l) => {
+        const o = l as Record<string, unknown>;
+        const loc = (o.location ?? {}) as Record<string, unknown>;
+        const ts = typeof o.timestamp === "string" ? o.timestamp : null;
+        const lat = typeof loc.latitude === "number" ? loc.latitude : null;
+        const lng = typeof loc.longitude === "number" ? loc.longitude : null;
+        if (!ts || lat === null || lng === null) return null;
+        return { timestamp: ts, lat, lng };
+      })
+      .filter((l): l is { timestamp: string; lat: number; lng: number } => l !== null);
+    return {
+      animalId: typeof a.animalId === "string" ? a.animalId : null,
+      earTag: typeof a.earTag === "string" ? a.earTag : null,
+      name: typeof a.name === "string" ? a.name : null,
+      deviceId: typeof a.deviceId === "string" ? a.deviceId : null,
+      serialNumber: typeof a.serialNumber === "string" ? a.serialNumber : null,
+      locations,
+    };
+  });
+}
+
 /** DELETE /api/Animals/{ranchId}/{animalId} */
 export async function deleteAnimal(ixorigueRanchId: string, ixorigueAnimalId: string): Promise<void> {
   await request(endpointPaths.animalById(ixorigueRanchId, ixorigueAnimalId), { method: "DELETE" });

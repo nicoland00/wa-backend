@@ -121,24 +121,6 @@ export type AnimalWeightDoc = {
   updatedAt: Date;
 };
 
-// A single captured location report from a device. We poll Ixorigue's latest
-// location per animal on a schedule and dedupe by (ixorigueAnimalId, recordedAt),
-// building the history Ixorigue itself does not expose.
-export type DevicePingDoc = {
-  _id: ObjectId;
-  ranchId: ObjectId;
-  animalId: ObjectId;
-  ixorigueAnimalId: string;
-  recordedAt: Date; // device's lastLocationTimestamp
-  lat: number | null;
-  lng: number | null;
-  isLowAccuracy: boolean | null;
-  battery: number | null; // 0..1
-  deviceSerial: string | null;
-  deviceDisabled: boolean | null;
-  capturedAt: Date; // when we polled it
-};
-
 export type ImportDoc = {
   _id: ObjectId;
   ranchId: ObjectId;

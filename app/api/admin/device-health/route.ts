@@ -3,9 +3,9 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
-import { ixorigueRawGet } from "@/lib/ixorigue/client";
+import { getAnimalsLocations, ixorigueRawGet } from "@/lib/ixorigue/client";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { AnimalDoc, DevicePingDoc, LotDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 const SLOT_MINUTES = 30;
 const TOTAL_SLOTS = (24 * 60) / SLOT_MINUTES; // 48
@@ -194,47 +194,68 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Pings we recorded ourselves (Ixorigue exposes no history). A ranch-local day
-  // (GMT-4) spans two UTC days, so query a wide window and filter by local date.
-  const windowStart = new Date(`${dateStr}T00:00:00.000Z`);
-  windowStart.setUTCHours(windowStart.getUTCHours() - 6); // pad for tz + capture jitter
-  const windowEnd = new Date(`${nextDay(dateStr)}T00:00:00.000Z`);
-  windowEnd.setUTCHours(windowEnd.getUTCHours() + 6);
+  // Real location history straight from Ixorigue for the selected local day.
+  // A ranch-local day (GMT-4) maps to a UTC range; one call returns every animal.
+  const fromMs = slotStartUtcMs(dateStr, 0);
+  const toMs = fromMs + 24 * 60 * 60 * 1000;
+  const fromIso = new Date(fromMs).toISOString();
+  const toIso = new Date(toMs).toISOString();
 
-  const pings = await db
-    .collection<DevicePingDoc>("device_pings")
-    .find({ ranchId: ranch._id, recordedAt: { $gte: windowStart, $lt: windowEnd } })
-    .sort({ recordedAt: 1 })
-    .toArray();
-
-  const pingsByAnimal = new Map<string, DevicePingDoc[]>();
-  for (const p of pings) {
-    if (localParts(p.recordedAt.toISOString()).date !== dateStr) continue;
-    const key = p.animalId.toString();
-    (pingsByAnimal.get(key) ?? pingsByAnimal.set(key, []).get(key)!).push(p);
+  let history: Awaited<ReturnType<typeof getAnimalsLocations>> = [];
+  if (ranch.ixorigueRanchId) {
+    try {
+      history = await getAnimalsLocations(ranch.ixorigueRanchId, fromIso, toIso);
+    } catch {
+      history = [];
+    }
+  }
+  // Map Ixorigue animalId -> its location timestamps within the local day.
+  const slotsByIxId = new Map<string, number[]>();
+  const lastPingByIxId = new Map<string, string>();
+  const serialByIxId = new Map<string, string | null>();
+  for (const h of history) {
+    if (!h.animalId) continue;
+    const slots: number[] = [];
+    let lastTs: string | null = null;
+    for (const loc of h.locations) {
+      const lp = localParts(loc.timestamp);
+      if (lp.date !== dateStr) continue;
+      slots.push(lp.slot);
+      if (!lastTs || loc.timestamp > lastTs) lastTs = loc.timestamp;
+    }
+    slotsByIxId.set(h.animalId, slots);
+    if (lastTs) lastPingByIxId.set(h.animalId, lastTs);
+    serialByIxId.set(h.animalId, h.serialNumber);
   }
 
-  // Latest battery/serial per animal (most recent ping ever, not just today).
-  const latestPings = await db
-    .collection<DevicePingDoc>("device_pings")
-    .aggregate<{ _id: ObjectId; battery: number | null; deviceSerial: string | null; deviceDisabled: boolean | null }>([
-      { $match: { ranchId: ranch._id } },
-      { $sort: { recordedAt: -1 } },
-      { $group: { _id: "$animalId", battery: { $first: "$battery" }, deviceSerial: { $first: "$deviceSerial" }, deviceDisabled: { $first: "$deviceDisabled" } } },
-    ])
-    .toArray();
-  const latestByAnimal = new Map(latestPings.map((p) => [p._id.toString(), p]));
+  // Battery / serial / disabled from the current animal list (one raw call).
+  const batteryByIxId = new Map<string, { battery: number | null; serial: string | null; disabled: boolean | null }>();
+  if (ranch.ixorigueRanchId) {
+    try {
+      const rawList = await ixorigueRawGet(`/api/Animals/${ranch.ixorigueRanchId}`);
+      const arr = Array.isArray(rawList)
+        ? rawList
+        : rawList && typeof rawList === "object" && Array.isArray((rawList as { data?: unknown }).data)
+          ? (rawList as { data: unknown[] }).data
+          : [];
+      for (const item of arr) {
+        const src = (item && typeof item === "object" && "data" in (item as object) ? (item as { data: unknown }).data : item) as Record<string, unknown>;
+        const ixId = typeof src.id === "string" ? src.id : null;
+        if (!ixId) continue;
+        const dev = (src.device && typeof src.device === "object" ? src.device : {}) as Record<string, unknown>;
+        batteryByIxId.set(ixId, {
+          battery: typeof dev.battery === "number" ? dev.battery : null,
+          serial: typeof dev.serialNumber === "string" ? dev.serialNumber : null,
+          disabled: typeof dev.disabled === "boolean" ? dev.disabled : null,
+        });
+      }
+    } catch {
+      // battery is best-effort
+    }
+  }
 
-  // Capture coverage: when did we first start polling this ranch? Slots before
-  // that are "no-data", not "missing".
-  const firstCapture = await db
-    .collection<DevicePingDoc>("device_pings")
-    .find({ ranchId: ranch._id })
-    .sort({ capturedAt: 1 })
-    .limit(1)
-    .next();
-  const coverageStartMs = firstCapture ? firstCapture.capturedAt.getTime() : Number.POSITIVE_INFINITY;
-
+  // History is authoritative across all of time, so every past slot is real.
+  const coverageStartMs = Number.NEGATIVE_INFINITY;
   const expectedSlots = countCoveredPastSlots(dateStr, coverageStartMs);
 
   // Build per-lot structure
@@ -244,15 +265,14 @@ export async function GET(request: NextRequest) {
   const unassigned: DeviceHealthAnimal[] = [];
 
   for (const animal of animals) {
-    const animalPings = pingsByAnimal.get(animal._id.toString()) ?? [];
-    const hasDevice = !!(ranch.ixorigueRanchId && animal.ixorigueAnimalId);
-    const localSlots = animalPings.map((p) => localParts(p.recordedAt.toISOString()).slot);
+    const ixId = animal.ixorigueAnimalId;
+    const hasDevice = !!(ranch.ixorigueRanchId && ixId);
+    const localSlots = ixId ? (slotsByIxId.get(ixId) ?? []) : [];
     const slots: SlotStatus[] = hasDevice
       ? buildSlots(localSlots, dateStr, coverageStartMs)
       : Array(TOTAL_SLOTS).fill("no-device" as SlotStatus);
 
-    const lastPing = animalPings[animalPings.length - 1];
-    const latest = latestByAnimal.get(animal._id.toString());
+    const dev = ixId ? batteryByIxId.get(ixId) : undefined;
     const entry: DeviceHealthAnimal = {
       id: animal._id.toString(),
       earTagNumber: animal.earTagNumber,
@@ -262,14 +282,14 @@ export async function GET(request: NextRequest) {
       slots,
       pingCount: new Set(localSlots).size,
       totalExpected: hasDevice ? expectedSlots : 0,
-      lastPingAt: lastPing ? lastPing.recordedAt.toISOString() : null,
+      lastPingAt: ixId ? (lastPingByIxId.get(ixId) ?? null) : null,
       lastKnownAt: animal.lastKnownCoordinates?.recordedAt
         ? new Date(animal.lastKnownCoordinates.recordedAt).toISOString()
         : null,
-      battery: latest?.battery ?? null,
-      deviceSerial: latest?.deviceSerial ?? null,
-      deviceDisabled: latest?.deviceDisabled ?? null,
-      lowAccuracyCount: animalPings.filter((p) => p.isLowAccuracy === true).length,
+      battery: dev?.battery ?? null,
+      deviceSerial: dev?.serial ?? (ixId ? serialByIxId.get(ixId) ?? null : null),
+      deviceDisabled: dev?.disabled ?? null,
+      lowAccuracyCount: 0,
     };
 
     const lotKey = animal.lotId.toString();
@@ -292,8 +312,7 @@ export async function GET(request: NextRequest) {
     result.push({ id: "unassigned", name: "Sin lote", animals: unassigned });
   }
 
-  const totalPingsToday = [...pingsByAnimal.values()].reduce((sum, p) => sum + p.length, 0);
-  const totalPingsEver = await db.collection<DevicePingDoc>("device_pings").countDocuments({ ranchId: ranch._id });
+  const totalPingsToday = [...slotsByIxId.values()].reduce((sum, s) => sum + s.length, 0);
 
   return NextResponse.json({
     date: dateStr,
@@ -305,8 +324,8 @@ export async function GET(request: NextRequest) {
       animalsWithIxorigueId: animals.filter((a) => a.ixorigueAnimalId).length,
       animalsTotal: animals.length,
       ranchHasIxorigueId: !!ranch.ixorigueRanchId,
-      totalPingsToday,
-      totalPingsEverForRanch: totalPingsEver,
+      historyAnimals: history.length,
+      totalLocationPointsToday: totalPingsToday,
     },
   });
 }
