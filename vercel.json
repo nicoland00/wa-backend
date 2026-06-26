@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/device-pings",
-      "schedule": "*/30 * * * *"
-    }
-  ]
-}

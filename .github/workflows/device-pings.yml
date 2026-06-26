@@ -1,0 +1,38 @@
+name: Capture device pings
+
+# Free alternative to Vercel Pro cron: GitHub Actions calls the capture
+# endpoint on a schedule so device_pings accumulates the reporting history.
+#
+# Setup (one time):
+#   1. In the deployed app (Vercel env) set CRON_SECRET to a random string.
+#   2. In this repo: Settings → Secrets and variables → Actions → New secret
+#        CRON_SECRET   = the same value
+#        APP_BASE_URL  = https://collateral.pastora.io   (no trailing slash)
+#
+# GitHub may delay or skip scheduled runs under load; ~every 30 min is fine
+# for a 30-min reporting cadence. You can also trigger it manually below.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call capture endpoint
+        run: |
+          BASE="${{ secrets.APP_BASE_URL }}"
+          if [ -z "$BASE" ]; then BASE="https://collateral.pastora.io"; fi
+          echo "Calling $BASE/api/cron/device-pings"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/cron/device-pings")
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "Capture failed with HTTP $code"
+            exit 1
+          fi

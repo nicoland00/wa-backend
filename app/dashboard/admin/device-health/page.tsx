@@ -265,6 +265,14 @@ export default function DeviceHealthPage() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">Device Health</h1>
             <p className="text-sm text-slate-500">Reporting timeline per device — built from 30-min polls. History starts when capturing begins.</p>
+            <button
+              onClick={() => void captureNow()}
+              disabled={capturing || !selectedRanchId}
+              className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 disabled:opacity-50"
+              title="Poll Ixorigue now and store the latest device locations"
+            >
+              {capturing ? "Capturing…" : "📡 Capture now"}
+            </button>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -296,15 +304,6 @@ export default function DeviceHealthPage() {
                 );
               })}
             </div>
-
-            <button
-              onClick={() => void captureNow()}
-              disabled={capturing || !selectedRanchId}
-              className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
-              title="Poll Ixorigue now and store the latest device locations"
-            >
-              {capturing ? "Capturing…" : "Capture now"}
-            </button>
           </div>
         </div>
 
