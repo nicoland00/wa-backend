@@ -152,11 +152,21 @@ export async function GET(request: NextRequest) {
     result.push({ id: "unassigned", name: "Sin lote", animals: unassigned });
   }
 
+  const totalPingsFetched = [...pingsByAnimal.values()].reduce((sum, p) => sum + p.length, 0);
+  const pathErrors = pathResults.filter((r) => r.status === "rejected").length;
+
   return NextResponse.json({
     date: dateStr,
     ranchId: ranch._id.toString(),
     ranchName: ranch.name,
     slotMinutes: SLOT_MINUTES,
     lots: result,
+    debug: {
+      animalsWithIxorigueId: animals.filter((a) => a.ixorigueAnimalId).length,
+      animalsTotal: animals.length,
+      ranchHasIxorigueId: !!ranch.ixorigueRanchId,
+      totalPingsFetched,
+      pathErrors,
+    },
   });
 }

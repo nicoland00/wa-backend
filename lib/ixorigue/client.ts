@@ -382,7 +382,33 @@ export async function getDevicesByRanch(ixorigueRanchId: string): Promise<Ixorig
 }
 
 export async function getAnimalPath(ixorigueRanchId: string, ixorigueAnimalId: string, date: string): Promise<IxorigueAnimalPathPointDto[]> {
-  return request(endpointPaths.animalPath(ixorigueRanchId, ixorigueAnimalId, date));
+  const payload = await request<unknown>(endpointPaths.animalPath(ixorigueRanchId, ixorigueAnimalId, date));
+  let points = pickDataArray(payload);
+  if (points.length === 0 && payload && typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+    for (const key of ["points", "path", "locations", "items", "results"]) {
+      if (Array.isArray(obj[key])) {
+        points = obj[key] as unknown[];
+        break;
+      }
+    }
+  }
+  return points
+    .map((raw): IxorigueAnimalPathPointDto | null => {
+      const p = raw as Record<string, unknown>;
+      const lat = (p.lat ?? p.latitude ?? p.Latitude) as number | undefined;
+      const lng = (p.lng ?? p.longitude ?? p.Longitude ?? p.lon) as number | undefined;
+      const recordedAt = (p.recordedAt ??
+        p.timestamp ??
+        p.Timestamp ??
+        p.date ??
+        p.dateTime ??
+        p.locationTimestamp ??
+        p.createdAt) as string | undefined;
+      if (typeof lat !== "number" || typeof lng !== "number") return null;
+      return { lat, lng, recordedAt: typeof recordedAt === "string" ? recordedAt : null };
+    })
+    .filter((p): p is IxorigueAnimalPathPointDto => p !== null);
 }
 
 /** DELETE /api/Animals/{ranchId}/{animalId} */
