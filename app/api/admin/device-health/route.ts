@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
-import { getAnimalPath, getAnimalPathRaw } from "@/lib/ixorigue/client";
+import { getAnimalPath, ixorigueRawGet } from "@/lib/ixorigue/client";
 import { objectIdSchema } from "@/lib/validators/common";
 import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
@@ -93,27 +93,74 @@ export async function GET(request: NextRequest) {
     db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id, lifeStatus: "alive" }).sort({ earTagNumber: 1 }).toArray(),
   ]);
 
-  // Debug: dump the raw Ixorigue path payload for the first animal with a device,
-  // so we can confirm the response shape and field names. /api/...?debug=raw
+  // Debug: probe several endpoint paths + date formats for the first animal with
+  // a device, so we can find which one actually returns historical pings.
+  // Prefer an animal that reported recently (so we know data SHOULD exist).
   if (searchParams.get("debug") === "raw") {
-    const sample = animals.find((a) => a.ixorigueAnimalId);
+    const sample =
+      animals
+        .filter((a) => a.ixorigueAnimalId && a.lastKnownCoordinates?.recordedAt)
+        .sort((a, b) =>
+          new Date(b.lastKnownCoordinates!.recordedAt).getTime() -
+          new Date(a.lastKnownCoordinates!.recordedAt).getTime(),
+        )[0] ?? animals.find((a) => a.ixorigueAnimalId);
+
     if (!ranch.ixorigueRanchId || !sample?.ixorigueAnimalId) {
       return NextResponse.json({ error: "No animal with ixorigueAnimalId on this ranch", ranchHasIxorigueId: !!ranch.ixorigueRanchId });
     }
-    try {
-      const [raw, rawNext] = await Promise.all([
-        getAnimalPathRaw(ranch.ixorigueRanchId, sample.ixorigueAnimalId, dateStr),
-        getAnimalPathRaw(ranch.ixorigueRanchId, sample.ixorigueAnimalId, nextDay(dateStr)),
-      ]);
-      return NextResponse.json({
-        sampleAnimal: { id: sample._id.toString(), earTag: sample.earTagNumber, ixorigueAnimalId: sample.ixorigueAnimalId },
-        date: dateStr,
-        rawForDate: raw,
-        rawForNextDate: rawNext,
-      });
-    } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
-    }
+    const rid = ranch.ixorigueRanchId;
+    const aid = sample.ixorigueAnimalId;
+
+    // The day we KNOW has data: the date of this animal's last known fix.
+    const lastFix = sample.lastKnownCoordinates?.recordedAt
+      ? new Date(sample.lastKnownCoordinates.recordedAt)
+      : new Date();
+    const lastFixDate = lastFix.toISOString().slice(0, 10); // UTC
+    const mmddyyyy = `${lastFixDate.slice(5, 7)}/${lastFixDate.slice(8, 10)}/${lastFixDate.slice(0, 4)}`;
+
+    const probes: { label: string; path: string }[] = [
+      { label: "path?date=YYYY-MM-DD", path: `/api/Animals/${rid}/${aid}/path?date=${encodeURIComponent(lastFixDate)}` },
+      { label: "path?date=YYYY-MM-DDT00:00:00", path: `/api/Animals/${rid}/${aid}/path?date=${encodeURIComponent(lastFixDate + "T00:00:00")}` },
+      { label: "path?date=MM/DD/YYYY", path: `/api/Animals/${rid}/${aid}/path?date=${encodeURIComponent(mmddyyyy)}` },
+      { label: "path (no date)", path: `/api/Animals/${rid}/${aid}/path` },
+      { label: "locations", path: `/api/Animals/${rid}/${aid}/locations` },
+      { label: "history", path: `/api/Animals/${rid}/${aid}/history` },
+      { label: "animalById (full doc)", path: `/api/Animals/${rid}/${aid}` },
+    ];
+
+    const results = await Promise.all(
+      probes.map(async (probe) => {
+        try {
+          const raw = await ixorigueRawGet(probe.path);
+          const arr = Array.isArray(raw)
+            ? raw
+            : raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)
+              ? (raw as { data: unknown[] }).data
+              : null;
+          return {
+            label: probe.label,
+            path: probe.path,
+            ok: true,
+            isArray: Array.isArray(raw),
+            arrayLength: arr ? arr.length : null,
+            sample: arr ? arr.slice(0, 2) : raw,
+          };
+        } catch (err) {
+          return { label: probe.label, path: probe.path, ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      }),
+    );
+
+    return NextResponse.json({
+      sampleAnimal: {
+        earTag: sample.earTagNumber,
+        ixorigueAnimalId: aid,
+        lastKnownFix: sample.lastKnownCoordinates?.recordedAt ?? null,
+      },
+      probedDate: lastFixDate,
+      note: "Look for a probe with arrayLength > 0 — that endpoint/format holds the history.",
+      results,
+    });
   }
 
   // A ranch-local day (GMT-4) spans two UTC days, so fetch both and keep only

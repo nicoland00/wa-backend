@@ -416,6 +416,11 @@ export async function getAnimalPathRaw(ixorigueRanchId: string, ixorigueAnimalId
   return request<unknown>(endpointPaths.animalPath(ixorigueRanchId, ixorigueAnimalId, date));
 }
 
+/** Raw GET against an arbitrary Ixorigue API path — diagnostics only. */
+export async function ixorigueRawGet(path: string): Promise<unknown> {
+  return request<unknown>(path);
+}
+
 /** DELETE /api/Animals/{ranchId}/{animalId} */
 export async function deleteAnimal(ixorigueRanchId: string, ixorigueAnimalId: string): Promise<void> {
   await request(endpointPaths.animalById(ixorigueRanchId, ixorigueAnimalId), { method: "DELETE" });
