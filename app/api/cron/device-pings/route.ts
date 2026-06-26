@@ -3,13 +3,17 @@ import { captureAllRanchDevicePings } from "@/lib/server/device-pings";
 
 export const maxDuration = 60;
 
-// Scheduled (Vercel cron) capture of every ranch's latest device locations.
-// Protected by CRON_SECRET: Vercel cron sends `Authorization: Bearer <secret>`.
+// Scheduled capture of every ranch's latest device locations.
+// If CRON_SECRET is set, accept it either as `Authorization: Bearer <secret>`
+// or as a `?token=<secret>` query param (easier for cron services that can't
+// send custom headers). If CRON_SECRET is unset, the endpoint is open.
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
+    const token = new URL(request.url).searchParams.get("token");
+    const ok = auth === `Bearer ${secret}` || token === secret;
+    if (!ok) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
