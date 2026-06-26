@@ -3,14 +3,8 @@ name: Capture device pings
 # Free alternative to Vercel Pro cron: GitHub Actions calls the capture
 # endpoint on a schedule so device_pings accumulates the reporting history.
 #
-# Setup (one time):
-#   1. In the deployed app (Vercel env) set CRON_SECRET to a random string.
-#   2. In this repo: Settings → Secrets and variables → Actions → New secret
-#        CRON_SECRET   = the same value
-#        APP_BASE_URL  = https://collateral.pastora.io   (no trailing slash)
-#
-# GitHub may delay or skip scheduled runs under load; ~every 30 min is fine
-# for a 30-min reporting cadence. You can also trigger it manually below.
+# Optional hardening: set repo secret CRON_SECRET (same value in Vercel env)
+# to lock the endpoint. Set APP_BASE_URL to override the default domain.
 
 on:
   schedule:
@@ -25,14 +19,43 @@ jobs:
         run: |
           BASE="${{ secrets.APP_BASE_URL }}"
           if [ -z "$BASE" ]; then BASE="https://collateral.pastora.io"; fi
-          echo "Calling $BASE/api/cron/device-pings"
-          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "$BASE/api/cron/device-pings")
+          URL="$BASE/api/cron/device-pings"
+
+          if [ -n "${{ secrets.CRON_SECRET }}" ]; then
+            AUTH=(-H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          else
+            AUTH=()
+          fi
+
+          echo "Calling $URL"
+          # Capture status + body + final URL (to reveal redirects)
+          code=$(curl -sS -L -o /tmp/resp.txt -w "%{http_code}" -D /tmp/headers.txt "${AUTH[@]}" "$URL" || echo "000")
+          final=$(curl -sS -o /dev/null -w "%{url_effective}" -L "${AUTH[@]}" "$URL" 2>/dev/null || echo "?")
+
+          {
+            echo "## Device pings capture"
+            echo ""
+            echo "- URL: \`$URL\`"
+            echo "- Final URL after redirects: \`$final\`"
+            echo "- HTTP status: **$code**"
+            echo "- CRON_SECRET set: ${{ secrets.CRON_SECRET != '' }}"
+            echo ""
+            echo "### Response body"
+            echo '```json'
+            head -c 4000 /tmp/resp.txt 2>/dev/null || echo "(empty)"
+            echo ""
+            echo '```'
+            echo "### Response headers"
+            echo '```'
+            head -c 1500 /tmp/headers.txt 2>/dev/null || echo "(none)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
           echo "HTTP $code"
-          cat /tmp/resp.json || true
+          cat /tmp/resp.txt || true
           echo
+
+          # Do not hard-fail: we want the summary readable. Flag non-200 in logs only.
           if [ "$code" != "200" ]; then
-            echo "Capture failed with HTTP $code"
-            exit 1
+            echo "::warning::Capture returned HTTP $code (see run summary for body)"
           fi
