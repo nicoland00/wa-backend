@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
-import { getAnimalPath } from "@/lib/ixorigue/client";
+import { getAnimalPath, getAnimalPathRaw } from "@/lib/ixorigue/client";
 import { objectIdSchema } from "@/lib/validators/common";
 import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
@@ -57,6 +57,8 @@ export type DeviceHealthAnimal = {
   pingCount: number;
   totalExpected: number;
   lastPingAt: string | null;
+  /** Last synced location time from the animal record (independent of the path endpoint). */
+  lastKnownAt: string | null;
 };
 
 export type DeviceHealthLot = {
@@ -90,6 +92,29 @@ export async function GET(request: NextRequest) {
     db.collection<LotDoc>("lots").find({ ranchId: ranch._id }).sort({ name: 1 }).toArray(),
     db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id, lifeStatus: "alive" }).sort({ earTagNumber: 1 }).toArray(),
   ]);
+
+  // Debug: dump the raw Ixorigue path payload for the first animal with a device,
+  // so we can confirm the response shape and field names. /api/...?debug=raw
+  if (searchParams.get("debug") === "raw") {
+    const sample = animals.find((a) => a.ixorigueAnimalId);
+    if (!ranch.ixorigueRanchId || !sample?.ixorigueAnimalId) {
+      return NextResponse.json({ error: "No animal with ixorigueAnimalId on this ranch", ranchHasIxorigueId: !!ranch.ixorigueRanchId });
+    }
+    try {
+      const [raw, rawNext] = await Promise.all([
+        getAnimalPathRaw(ranch.ixorigueRanchId, sample.ixorigueAnimalId, dateStr),
+        getAnimalPathRaw(ranch.ixorigueRanchId, sample.ixorigueAnimalId, nextDay(dateStr)),
+      ]);
+      return NextResponse.json({
+        sampleAnimal: { id: sample._id.toString(), earTag: sample.earTagNumber, ixorigueAnimalId: sample.ixorigueAnimalId },
+        date: dateStr,
+        rawForDate: raw,
+        rawForNextDate: rawNext,
+      });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
+    }
+  }
 
   // A ranch-local day (GMT-4) spans two UTC days, so fetch both and keep only
   // the points whose local date matches the selected day.
@@ -150,6 +175,9 @@ export async function GET(request: NextRequest) {
       pingCount: pings.length,
       totalExpected: hasDevice ? expectedSlots : 0,
       lastPingAt: sortedPings[sortedPings.length - 1] ?? null,
+      lastKnownAt: animal.lastKnownCoordinates?.recordedAt
+        ? new Date(animal.lastKnownCoordinates.recordedAt).toISOString()
+        : null,
     };
 
     const lotKey = animal.lotId.toString();

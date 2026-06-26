@@ -18,6 +18,7 @@ type DeviceHealthAnimal = {
   pingCount: number;
   totalExpected: number;
   lastPingAt: string | null;
+  lastKnownAt: string | null;
 };
 
 type DeviceHealthLot = {
@@ -84,6 +85,24 @@ function formatLastPing(iso: string | null): string {
   const h = local.getUTCHours().toString().padStart(2, "0");
   const m = local.getUTCMinutes().toString().padStart(2, "0");
   return `${h}:${m}`;
+}
+
+// Full ranch-local date + time, with a relative "Xh/Xd ago" hint. For "last seen".
+function formatLastKnown(iso: string | null): { text: string; stale: boolean } {
+  if (!iso) return { text: "never", stale: true };
+  const then = new Date(iso);
+  const local = new Date(then.getTime() + TZ_OFFSET_MIN * 60_000);
+  const datePart = local.toISOString().slice(0, 10);
+  const h = local.getUTCHours().toString().padStart(2, "0");
+  const m = local.getUTCMinutes().toString().padStart(2, "0");
+  const diffMs = Date.now() - then.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  let rel: string;
+  if (diffMin < 60) rel = `${diffMin}m ago`;
+  else if (diffMin < 1440) rel = `${Math.floor(diffMin / 60)}h ago`;
+  else rel = `${Math.floor(diffMin / 1440)}d ago`;
+  // "Stale" if the last fix is older than ~2 reporting windows (1h).
+  return { text: `${datePart} ${h}:${m} · ${rel}`, stale: diffMin > 60 };
 }
 
 function TimelineBar({ slots, label }: { slots: SlotStatus[]; label: string }) {
@@ -307,6 +326,7 @@ export default function DeviceHealthPage() {
                 <div className="divide-y divide-slate-50 border-t border-slate-100">
                   {lot.animals.map((animal) => {
                     const score = healthScore(animal);
+                    const lastSeen = formatLastKnown(animal.lastKnownAt);
                     return (
                       <div key={animal.id} className="px-5 py-4">
                         <div className="mb-2 flex items-center justify-between gap-2">
@@ -322,12 +342,20 @@ export default function DeviceHealthPage() {
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
-                            <span>Last ping: <span className="font-medium text-slate-700">{formatLastPing(animal.lastPingAt)}</span></span>
                             <span>{animal.pingCount}/{animal.totalExpected} pings</span>
                             <span className={`font-bold ${scoreColor(score)}`}>{animal.totalExpected > 0 ? `${score}%` : "—"}</span>
                           </div>
                         </div>
                         <TimelineBar slots={animal.slots} label={`Animal ${animal.earTagNumber} timeline`} />
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                          <span className="text-slate-400">Last known fix:</span>
+                          <span className={lastSeen.stale ? "font-medium text-red-500" : "font-medium text-emerald-600"}>
+                            {lastSeen.text}
+                          </span>
+                          {animal.lastPingAt && (
+                            <span className="text-slate-400">· last ping today {formatLastPing(animal.lastPingAt)}</span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

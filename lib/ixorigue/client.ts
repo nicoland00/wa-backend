@@ -411,6 +411,11 @@ export async function getAnimalPath(ixorigueRanchId: string, ixorigueAnimalId: s
     .filter((p): p is IxorigueAnimalPathPointDto => p !== null);
 }
 
+/** Raw, unparsed path payload — used for debugging the response shape. */
+export async function getAnimalPathRaw(ixorigueRanchId: string, ixorigueAnimalId: string, date: string): Promise<unknown> {
+  return request<unknown>(endpointPaths.animalPath(ixorigueRanchId, ixorigueAnimalId, date));
+}
+
 /** DELETE /api/Animals/{ranchId}/{animalId} */
 export async function deleteAnimal(ixorigueRanchId: string, ixorigueAnimalId: string): Promise<void> {
   await request(endpointPaths.animalById(ixorigueRanchId, ixorigueAnimalId), { method: "DELETE" });
