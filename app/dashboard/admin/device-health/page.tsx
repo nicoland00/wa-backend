@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { canViewAdminScreens } from "@/lib/permissions";
 
-type SlotStatus = "ok" | "missing" | "future" | "no-device";
+type SlotStatus = "ok" | "missing" | "future" | "no-device" | "no-data";
 
 type DeviceHealthAnimal = {
   id: string;
@@ -60,7 +60,8 @@ function slotColor(status: SlotStatus): string {
     case "ok": return "bg-blue-500";
     case "missing": return "bg-red-400";
     case "future": return "bg-slate-100";
-    case "no-device": return "bg-slate-200";
+    case "no-data": return "bg-slate-200";
+    case "no-device": return "bg-slate-300";
   }
 }
 
@@ -346,7 +347,8 @@ export default function DeviceHealthPage() {
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-blue-500" /> Ping received</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> Gap (missed window)</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-100 border border-slate-200" /> Future</span>
-          <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-200" /> No device assigned</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-200" /> No data captured yet</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-slate-300" /> No device assigned</span>
         </div>
 
         {/* Diagnostics: shows the raw Ixorigue path JSON so we can confirm data vs parsing */}

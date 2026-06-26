@@ -32,10 +32,20 @@ function nextDay(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-type SlotStatus = "ok" | "missing" | "future" | "no-device";
+type SlotStatus = "ok" | "missing" | "future" | "no-device" | "no-data";
 
-/** Build 48 local-time slots from pings already filtered to the selected local date. */
-function buildSlots(localSlots: number[], dateStr: string): SlotStatus[] {
+/** UTC ms at the start of local slot `i` on `dateStr` (GMT-4). */
+function slotStartUtcMs(dateStr: string, i: number): number {
+  // local wall time -> UTC: UTC = local - offset (offset is local-minus-UTC, i.e. -240)
+  return Date.parse(`${dateStr}T00:00:00Z`) - TZ_OFFSET_MIN * 60_000 + i * SLOT_MINUTES * 60_000;
+}
+
+/**
+ * Build 48 local-time slots. Slots before we began capturing are "no-data"
+ * (neutral) rather than "missing" (red) — we can't claim a device failed to
+ * report during a window we weren't even polling.
+ */
+function buildSlots(localSlots: number[], dateStr: string, coverageStartMs: number): SlotStatus[] {
   const now = localNow();
   const isToday = dateStr === now.date;
   const currentSlot = isToday ? now.slot : TOTAL_SLOTS - 1;
@@ -43,8 +53,25 @@ function buildSlots(localSlots: number[], dateStr: string): SlotStatus[] {
   const filled = new Set(localSlots);
   return Array.from({ length: TOTAL_SLOTS }, (_, i) => {
     if (i > currentSlot) return "future";
-    return filled.has(i) ? "ok" : "missing";
+    if (filled.has(i)) return "ok";
+    // No ping in this slot — was it within our capture coverage?
+    const slotEndMs = slotStartUtcMs(dateStr, i) + SLOT_MINUTES * 60_000;
+    if (slotEndMs <= coverageStartMs) return "no-data";
+    return "missing";
   });
+}
+
+/** Count slots that were both in the past and within capture coverage. */
+function countCoveredPastSlots(dateStr: string, coverageStartMs: number): number {
+  const now = localNow();
+  const isToday = dateStr === now.date;
+  const currentSlot = isToday ? now.slot : TOTAL_SLOTS - 1;
+  let n = 0;
+  for (let i = 0; i <= currentSlot; i++) {
+    const slotEndMs = slotStartUtcMs(dateStr, i) + SLOT_MINUTES * 60_000;
+    if (slotEndMs > coverageStartMs) n += 1;
+  }
+  return n;
 }
 
 export type DeviceHealthAnimal = {
@@ -198,11 +225,17 @@ export async function GET(request: NextRequest) {
     .toArray();
   const latestByAnimal = new Map(latestPings.map((p) => [p._id.toString(), p]));
 
-  // Count how many active slots exist (past + current) for expected count
-  const now = localNow();
-  const isToday = dateStr === now.date;
-  const currentSlot = isToday ? now.slot : TOTAL_SLOTS - 1;
-  const expectedSlots = currentSlot + 1;
+  // Capture coverage: when did we first start polling this ranch? Slots before
+  // that are "no-data", not "missing".
+  const firstCapture = await db
+    .collection<DevicePingDoc>("device_pings")
+    .find({ ranchId: ranch._id })
+    .sort({ capturedAt: 1 })
+    .limit(1)
+    .next();
+  const coverageStartMs = firstCapture ? firstCapture.capturedAt.getTime() : Number.POSITIVE_INFINITY;
+
+  const expectedSlots = countCoveredPastSlots(dateStr, coverageStartMs);
 
   // Build per-lot structure
   const lotAnimalsMap = new Map<string, DeviceHealthAnimal[]>();
@@ -215,7 +248,7 @@ export async function GET(request: NextRequest) {
     const hasDevice = !!(ranch.ixorigueRanchId && animal.ixorigueAnimalId);
     const localSlots = animalPings.map((p) => localParts(p.recordedAt.toISOString()).slot);
     const slots: SlotStatus[] = hasDevice
-      ? buildSlots(localSlots, dateStr)
+      ? buildSlots(localSlots, dateStr, coverageStartMs)
       : Array(TOTAL_SLOTS).fill("no-device" as SlotStatus);
 
     const lastPing = animalPings[animalPings.length - 1];
