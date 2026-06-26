@@ -19,6 +19,10 @@ type DeviceHealthAnimal = {
   totalExpected: number;
   lastPingAt: string | null;
   lastKnownAt: string | null;
+  battery: number | null;
+  deviceSerial: string | null;
+  deviceDisabled: boolean | null;
+  lowAccuracyCount: number;
 };
 
 type DeviceHealthLot = {
@@ -76,6 +80,12 @@ function lotScore(lot: DeviceHealthLot): { ok: number; total: number } {
   if (!withDevice.length) return { ok: 0, total: 0 };
   const ok = withDevice.filter((a) => healthScore(a) >= 80).length;
   return { ok, total: withDevice.length };
+}
+
+function batteryColor(pct: number): string {
+  if (pct >= 50) return "text-emerald-600";
+  if (pct >= 20) return "text-amber-500";
+  return "text-red-500";
 }
 
 function formatLastPing(iso: string | null): string {
@@ -161,6 +171,8 @@ export default function DeviceHealthPage() {
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
   const [diag, setDiag] = useState<string | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -194,6 +206,27 @@ export default function DeviceHealthPage() {
 
   useEffect(() => {
     if (selectedRanchId) void loadData(selectedRanchId, selectedDate);
+  }, [selectedRanchId, selectedDate, loadData]);
+
+  const captureNow = useCallback(async () => {
+    if (!selectedRanchId) return;
+    setCapturing(true);
+    setCaptureMsg(null);
+    try {
+      const res = await fetch(`/api/admin/device-health/capture?ranchId=${selectedRanchId}`, { method: "POST", cache: "no-store" });
+      const json = await res.json();
+      if (res.ok) {
+        const r = json.result ?? {};
+        setCaptureMsg(`Captured ${r.fetched ?? 0} animals · ${r.inserted ?? 0} new pings stored`);
+        await loadData(selectedRanchId, selectedDate);
+      } else {
+        setCaptureMsg(`Error: ${json.error ?? res.status}`);
+      }
+    } catch (err) {
+      setCaptureMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCapturing(false);
+    }
   }, [selectedRanchId, selectedDate, loadData]);
 
   const runDiagnostics = useCallback(async () => {
@@ -230,7 +263,7 @@ export default function DeviceHealthPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Device Health</h1>
-            <p className="text-sm text-slate-500">GPS ping timeline per animal — expected every 30 min</p>
+            <p className="text-sm text-slate-500">Reporting timeline per device — built from 30-min polls. History starts when capturing begins.</p>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -262,8 +295,23 @@ export default function DeviceHealthPage() {
                 );
               })}
             </div>
+
+            <button
+              onClick={() => void captureNow()}
+              disabled={capturing || !selectedRanchId}
+              className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+              title="Poll Ixorigue now and store the latest device locations"
+            >
+              {capturing ? "Capturing…" : "Capture now"}
+            </button>
           </div>
         </div>
+
+        {captureMsg && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            {captureMsg}
+          </div>
+        )}
 
         {/* Fleet summary */}
         {data && !loading && (
@@ -374,13 +422,21 @@ export default function DeviceHealthPage() {
                               #{animal.earTagNumber}
                               {animal.name ? ` · ${animal.name}` : ""}
                             </span>
-                            {animal.deviceId && (
+                            {(animal.deviceSerial || animal.deviceId) && (
                               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 font-mono truncate">
-                                {animal.deviceId}
+                                {animal.deviceSerial ?? animal.deviceId}
                               </span>
+                            )}
+                            {animal.deviceDisabled && (
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">disabled</span>
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
+                            {animal.battery !== null && (
+                              <span className={`font-medium ${batteryColor(Math.round(animal.battery * 100))}`}>
+                                🔋 {Math.round(animal.battery * 100)}%
+                              </span>
+                            )}
                             <span>{animal.pingCount}/{animal.totalExpected} pings</span>
                             <span className={`font-bold ${scoreColor(score)}`}>{animal.totalExpected > 0 ? `${score}%` : "—"}</span>
                           </div>
@@ -393,6 +449,9 @@ export default function DeviceHealthPage() {
                           </span>
                           {animal.lastPingAt && (
                             <span className="text-slate-400">· last ping today {formatLastPing(animal.lastPingAt)}</span>
+                          )}
+                          {animal.lowAccuracyCount > 0 && (
+                            <span className="text-amber-500">· {animal.lowAccuracyCount} low-accuracy</span>
                           )}
                         </div>
                       </div>

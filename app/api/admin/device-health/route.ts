@@ -3,9 +3,9 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
-import { getAnimalPath, ixorigueRawGet } from "@/lib/ixorigue/client";
+import { ixorigueRawGet } from "@/lib/ixorigue/client";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, DevicePingDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 const SLOT_MINUTES = 30;
 const TOTAL_SLOTS = (24 * 60) / SLOT_MINUTES; // 48
@@ -59,6 +59,10 @@ export type DeviceHealthAnimal = {
   lastPingAt: string | null;
   /** Last synced location time from the animal record (independent of the path endpoint). */
   lastKnownAt: string | null;
+  battery: number | null; // 0..1, latest known
+  deviceSerial: string | null;
+  deviceDisabled: boolean | null;
+  lowAccuracyCount: number; // pings flagged low-accuracy on the selected day
 };
 
 export type DeviceHealthLot = {
@@ -163,33 +167,36 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // A ranch-local day (GMT-4) spans two UTC days, so fetch both and keep only
-  // the points whose local date matches the selected day.
-  const utcDay = dateStr; // local 04:00..24:00 falls on this UTC day
-  const utcDayNext = nextDay(dateStr); // local 00:00..04:00 falls on the next UTC day
-  const pathResults = await Promise.allSettled(
-    animals.map(async (animal) => {
-      if (!ranch.ixorigueRanchId || !animal.ixorigueAnimalId) {
-        return { animalId: animal._id.toString(), pings: [] as string[] };
-      }
-      const [a, b] = await Promise.all([
-        getAnimalPath(ranch.ixorigueRanchId, animal.ixorigueAnimalId, utcDay),
-        getAnimalPath(ranch.ixorigueRanchId, animal.ixorigueAnimalId, utcDayNext),
-      ]);
-      const pings = [...a, ...b]
-        .filter((p) => p.recordedAt)
-        .map((p) => p.recordedAt as string)
-        .filter((iso) => localParts(iso).date === dateStr);
-      return { animalId: animal._id.toString(), pings };
-    }),
-  );
+  // Pings we recorded ourselves (Ixorigue exposes no history). A ranch-local day
+  // (GMT-4) spans two UTC days, so query a wide window and filter by local date.
+  const windowStart = new Date(`${dateStr}T00:00:00.000Z`);
+  windowStart.setUTCHours(windowStart.getUTCHours() - 6); // pad for tz + capture jitter
+  const windowEnd = new Date(`${nextDay(dateStr)}T00:00:00.000Z`);
+  windowEnd.setUTCHours(windowEnd.getUTCHours() + 6);
 
-  const pingsByAnimal = new Map<string, string[]>();
-  for (const result of pathResults) {
-    if (result.status === "fulfilled") {
-      pingsByAnimal.set(result.value.animalId, result.value.pings);
-    }
+  const pings = await db
+    .collection<DevicePingDoc>("device_pings")
+    .find({ ranchId: ranch._id, recordedAt: { $gte: windowStart, $lt: windowEnd } })
+    .sort({ recordedAt: 1 })
+    .toArray();
+
+  const pingsByAnimal = new Map<string, DevicePingDoc[]>();
+  for (const p of pings) {
+    if (localParts(p.recordedAt.toISOString()).date !== dateStr) continue;
+    const key = p.animalId.toString();
+    (pingsByAnimal.get(key) ?? pingsByAnimal.set(key, []).get(key)!).push(p);
   }
+
+  // Latest battery/serial per animal (most recent ping ever, not just today).
+  const latestPings = await db
+    .collection<DevicePingDoc>("device_pings")
+    .aggregate<{ _id: ObjectId; battery: number | null; deviceSerial: string | null; deviceDisabled: boolean | null }>([
+      { $match: { ranchId: ranch._id } },
+      { $sort: { recordedAt: -1 } },
+      { $group: { _id: "$animalId", battery: { $first: "$battery" }, deviceSerial: { $first: "$deviceSerial" }, deviceDisabled: { $first: "$deviceDisabled" } } },
+    ])
+    .toArray();
+  const latestByAnimal = new Map(latestPings.map((p) => [p._id.toString(), p]));
 
   // Count how many active slots exist (past + current) for expected count
   const now = localNow();
@@ -204,14 +211,15 @@ export async function GET(request: NextRequest) {
   const unassigned: DeviceHealthAnimal[] = [];
 
   for (const animal of animals) {
-    const pings = pingsByAnimal.get(animal._id.toString()) ?? [];
+    const animalPings = pingsByAnimal.get(animal._id.toString()) ?? [];
     const hasDevice = !!(ranch.ixorigueRanchId && animal.ixorigueAnimalId);
-    const localSlots = pings.map((iso) => localParts(iso).slot);
+    const localSlots = animalPings.map((p) => localParts(p.recordedAt.toISOString()).slot);
     const slots: SlotStatus[] = hasDevice
       ? buildSlots(localSlots, dateStr)
       : Array(TOTAL_SLOTS).fill("no-device" as SlotStatus);
 
-    const sortedPings = [...pings].sort();
+    const lastPing = animalPings[animalPings.length - 1];
+    const latest = latestByAnimal.get(animal._id.toString());
     const entry: DeviceHealthAnimal = {
       id: animal._id.toString(),
       earTagNumber: animal.earTagNumber,
@@ -219,12 +227,16 @@ export async function GET(request: NextRequest) {
       deviceId: animal.deviceId ?? null,
       ixorigueAnimalId: animal.ixorigueAnimalId,
       slots,
-      pingCount: pings.length,
+      pingCount: new Set(localSlots).size,
       totalExpected: hasDevice ? expectedSlots : 0,
-      lastPingAt: sortedPings[sortedPings.length - 1] ?? null,
+      lastPingAt: lastPing ? lastPing.recordedAt.toISOString() : null,
       lastKnownAt: animal.lastKnownCoordinates?.recordedAt
         ? new Date(animal.lastKnownCoordinates.recordedAt).toISOString()
         : null,
+      battery: latest?.battery ?? null,
+      deviceSerial: latest?.deviceSerial ?? null,
+      deviceDisabled: latest?.deviceDisabled ?? null,
+      lowAccuracyCount: animalPings.filter((p) => p.isLowAccuracy === true).length,
     };
 
     const lotKey = animal.lotId.toString();
@@ -247,8 +259,8 @@ export async function GET(request: NextRequest) {
     result.push({ id: "unassigned", name: "Sin lote", animals: unassigned });
   }
 
-  const totalPingsFetched = [...pingsByAnimal.values()].reduce((sum, p) => sum + p.length, 0);
-  const pathErrors = pathResults.filter((r) => r.status === "rejected").length;
+  const totalPingsToday = [...pingsByAnimal.values()].reduce((sum, p) => sum + p.length, 0);
+  const totalPingsEver = await db.collection<DevicePingDoc>("device_pings").countDocuments({ ranchId: ranch._id });
 
   return NextResponse.json({
     date: dateStr,
@@ -260,8 +272,8 @@ export async function GET(request: NextRequest) {
       animalsWithIxorigueId: animals.filter((a) => a.ixorigueAnimalId).length,
       animalsTotal: animals.length,
       ranchHasIxorigueId: !!ranch.ixorigueRanchId,
-      totalPingsFetched,
-      pathErrors,
+      totalPingsToday,
+      totalPingsEverForRanch: totalPingsEver,
     },
   });
 }
