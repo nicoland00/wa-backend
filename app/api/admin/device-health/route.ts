@@ -9,23 +9,38 @@ import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 const SLOT_MINUTES = 30;
 const TOTAL_SLOTS = (24 * 60) / SLOT_MINUTES; // 48
+// Ranch local timezone: GMT-4. Pings come from Ixorigue as UTC ISO strings;
+// we bucket them by local wall-clock so the bar reads in ranch time.
+const TZ_OFFSET_MIN = -4 * 60;
 
-function slotIndex(isoString: string): number {
-  const d = new Date(isoString);
-  return Math.floor((d.getUTCHours() * 60 + d.getUTCMinutes()) / SLOT_MINUTES);
+/** Local (ranch-time) wall clock for a UTC ISO string. */
+function localParts(isoString: string): { date: string; slot: number } {
+  const shifted = new Date(new Date(isoString).getTime() + TZ_OFFSET_MIN * 60_000);
+  const date = shifted.toISOString().slice(0, 10);
+  const slot = Math.floor((shifted.getUTCHours() * 60 + shifted.getUTCMinutes()) / SLOT_MINUTES);
+  return { date, slot };
+}
+
+/** Current ranch-local date + slot index right now. */
+function localNow(): { date: string; slot: number } {
+  return localParts(new Date().toISOString());
+}
+
+function nextDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 type SlotStatus = "ok" | "missing" | "future" | "no-device";
 
-function buildSlots(pingTimes: string[], dateStr: string): SlotStatus[] {
-  const now = new Date();
-  const todayUtc = now.toISOString().slice(0, 10);
-  const isToday = dateStr === todayUtc;
-  const currentSlot = isToday
-    ? Math.floor((now.getUTCHours() * 60 + now.getUTCMinutes()) / SLOT_MINUTES)
-    : TOTAL_SLOTS - 1;
+/** Build 48 local-time slots from pings already filtered to the selected local date. */
+function buildSlots(localSlots: number[], dateStr: string): SlotStatus[] {
+  const now = localNow();
+  const isToday = dateStr === now.date;
+  const currentSlot = isToday ? now.slot : TOTAL_SLOTS - 1;
 
-  const filled = new Set(pingTimes.map(slotIndex));
+  const filled = new Set(localSlots);
   return Array.from({ length: TOTAL_SLOTS }, (_, i) => {
     if (i > currentSlot) return "future";
     return filled.has(i) ? "ok" : "missing";
@@ -64,8 +79,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid ranchId" }, { status: 400 });
   }
 
-  // Default to today in UTC
-  const dateStr = dateParam ?? new Date().toISOString().slice(0, 10);
+  // Default to today in ranch-local time (GMT-4)
+  const dateStr = dateParam ?? localNow().date;
 
   const db = await getDb();
   const ranch = await db.collection<RanchDoc>("ranches").findOne({ _id: new ObjectId(parsedRanchId.data) });
@@ -76,14 +91,23 @@ export async function GET(request: NextRequest) {
     db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id, lifeStatus: "alive" }).sort({ earTagNumber: 1 }).toArray(),
   ]);
 
-  // Fetch path points from Ixorigue for each animal that has an ixorigueAnimalId
+  // A ranch-local day (GMT-4) spans two UTC days, so fetch both and keep only
+  // the points whose local date matches the selected day.
+  const utcDay = dateStr; // local 04:00..24:00 falls on this UTC day
+  const utcDayNext = nextDay(dateStr); // local 00:00..04:00 falls on the next UTC day
   const pathResults = await Promise.allSettled(
     animals.map(async (animal) => {
-      if (!ranch.ixorigueRanchId || !animal.ixorigueAnimalId) return { animalId: animal._id.toString(), pings: [] };
-      const points = await getAnimalPath(ranch.ixorigueRanchId, animal.ixorigueAnimalId, dateStr);
-      const pings = points
+      if (!ranch.ixorigueRanchId || !animal.ixorigueAnimalId) {
+        return { animalId: animal._id.toString(), pings: [] as string[] };
+      }
+      const [a, b] = await Promise.all([
+        getAnimalPath(ranch.ixorigueRanchId, animal.ixorigueAnimalId, utcDay),
+        getAnimalPath(ranch.ixorigueRanchId, animal.ixorigueAnimalId, utcDayNext),
+      ]);
+      const pings = [...a, ...b]
         .filter((p) => p.recordedAt)
-        .map((p) => p.recordedAt as string);
+        .map((p) => p.recordedAt as string)
+        .filter((iso) => localParts(iso).date === dateStr);
       return { animalId: animal._id.toString(), pings };
     }),
   );
@@ -96,15 +120,10 @@ export async function GET(request: NextRequest) {
   }
 
   // Count how many active slots exist (past + current) for expected count
-  const now = new Date();
-  const todayUtc = now.toISOString().slice(0, 10);
-  const isToday = dateStr === todayUtc;
-  const currentSlot = isToday
-    ? Math.floor((now.getUTCHours() * 60 + now.getUTCMinutes()) / SLOT_MINUTES)
-    : TOTAL_SLOTS - 1;
+  const now = localNow();
+  const isToday = dateStr === now.date;
+  const currentSlot = isToday ? now.slot : TOTAL_SLOTS - 1;
   const expectedSlots = currentSlot + 1;
-
-  const lotMap = new Map(lots.map((l) => [l._id.toString(), l]));
 
   // Build per-lot structure
   const lotAnimalsMap = new Map<string, DeviceHealthAnimal[]>();
@@ -115,8 +134,9 @@ export async function GET(request: NextRequest) {
   for (const animal of animals) {
     const pings = pingsByAnimal.get(animal._id.toString()) ?? [];
     const hasDevice = !!(ranch.ixorigueRanchId && animal.ixorigueAnimalId);
+    const localSlots = pings.map((iso) => localParts(iso).slot);
     const slots: SlotStatus[] = hasDevice
-      ? buildSlots(pings, dateStr)
+      ? buildSlots(localSlots, dateStr)
       : Array(TOTAL_SLOTS).fill("no-device" as SlotStatus);
 
     const sortedPings = [...pings].sort();

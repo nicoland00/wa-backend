@@ -37,6 +37,12 @@ type HealthData = {
 type Ranch = { _id: string; name: string };
 
 const SLOT_COUNT = 48;
+// Ranch local timezone offset (GMT-4), used to label dates/times in ranch time.
+const TZ_OFFSET_MIN = -4 * 60;
+
+function ranchLocalDate(d: Date): string {
+  return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+}
 
 function slotLabel(index: number): string {
   const h = Math.floor((index * 30) / 60).toString().padStart(2, "0");
@@ -73,8 +79,11 @@ function lotScore(lot: DeviceHealthLot): { ok: number; total: number } {
 
 function formatLastPing(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Render in ranch-local time (GMT-4) regardless of the admin's own timezone.
+  const local = new Date(new Date(iso).getTime() + TZ_OFFSET_MIN * 60_000);
+  const h = local.getUTCHours().toString().padStart(2, "0");
+  const m = local.getUTCMinutes().toString().padStart(2, "0");
+  return `${h}:${m}`;
 }
 
 function TimelineBar({ slots, label }: { slots: SlotStatus[]; label: string }) {
@@ -108,12 +117,12 @@ function TimelineBar({ slots, label }: { slots: SlotStatus[]; label: string }) {
   );
 }
 
-// Generates the last 7 days as YYYY-MM-DD strings (UTC), most recent first
+// Generates the last 7 ranch-local days as YYYY-MM-DD strings, most recent first
 function lastSevenDays(): string[] {
   const days: string[] = [];
   const now = new Date();
   for (let i = 0; i < 7; i++) {
-    const d = new Date(now);
+    const d = new Date(now.getTime() + TZ_OFFSET_MIN * 60_000);
     d.setUTCDate(d.getUTCDate() - i);
     days.push(d.toISOString().slice(0, 10));
   }
@@ -127,7 +136,7 @@ export default function DeviceHealthPage() {
 
   const [ranches, setRanches] = useState<Ranch[]>([]);
   const [selectedRanchId, setSelectedRanchId] = useState<string>("");
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState<string>(ranchLocalDate(new Date()));
   const [data, setData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
