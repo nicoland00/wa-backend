@@ -339,7 +339,10 @@ export default function DeviceHealthPage() {
         {!loading && data && data.lots.map((lot) => {
           const withDev = lot.animals.filter((a) => a.hasDevice && a.overallExpected > 0);
           const ok = withDev.filter((a) => a.overallPct >= 75).length;
-          const lotPct = withDev.length ? Math.round((ok / withDev.length) * 100) : 0;
+          // Lot health = average reporting % of its devices (not the share reporting well).
+          const lotPct = withDev.length
+            ? Math.round(withDev.reduce((s, a) => s + a.overallPct, 0) / withDev.length)
+            : 0;
           const isExpanded = expandedLots.has(lot.id);
 
           return (
