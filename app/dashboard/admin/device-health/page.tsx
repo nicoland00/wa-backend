@@ -74,19 +74,22 @@ function slotColor(status: SlotStatus): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return "text-emerald-600";
-  if (score >= 50) return "text-amber-500";
-  if (score >= 25) return "text-orange-500";
-  return "text-red-500";
+  if (score >= 76) return "text-emerald-600";
+  if (score >= 51) return "text-amber-500";
+  if (score >= 26) return "text-orange-500";
+  if (score >= 1) return "text-red-500";
+  return "text-red-700"; // 0 — no reports
 }
 
-// Heatmap cell color for a day's reporting percentage (quartiles).
+// Heatmap cell color for a day's reporting percentage.
+// 0% is its own (darkest) bucket; then 1-25, 26-50, 51-75, 76-100.
 function dayColor(d: DeviceHealthDay): string {
   if (d.expected === 0) return "bg-slate-100"; // future / no expectation
-  if (d.pct >= 75) return "bg-emerald-500";
-  if (d.pct >= 50) return "bg-amber-400";
-  if (d.pct >= 25) return "bg-orange-400";
-  return "bg-red-400";
+  if (d.pct >= 76) return "bg-emerald-500";
+  if (d.pct >= 51) return "bg-amber-400";
+  if (d.pct >= 26) return "bg-orange-400";
+  if (d.pct >= 1) return "bg-red-400";
+  return "bg-red-700"; // 0% — totally silent
 }
 
 function batteryColor(pct: number): string {
@@ -323,10 +326,11 @@ export default function DeviceHealthPage() {
           </div>
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-emerald-500" /> 75–100%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-amber-400" /> 50–75%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-orange-400" /> 25–50%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> 0–25%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-emerald-500" /> 76–100%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-amber-400" /> 51–75%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-orange-400" /> 26–50%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> 1–25%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-700" /> 0%</span>
           </div>
         )}
 
