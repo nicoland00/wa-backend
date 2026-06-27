@@ -74,17 +74,18 @@ function slotColor(status: SlotStatus): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return "text-emerald-600";
+  if (score >= 75) return "text-emerald-600";
   if (score >= 50) return "text-amber-500";
+  if (score >= 25) return "text-orange-500";
   return "text-red-500";
 }
 
-// Heatmap cell color for a day's reporting percentage.
+// Heatmap cell color for a day's reporting percentage (quartiles).
 function dayColor(d: DeviceHealthDay): string {
   if (d.expected === 0) return "bg-slate-100"; // future / no expectation
-  if (d.pct >= 80) return "bg-emerald-500";
+  if (d.pct >= 75) return "bg-emerald-500";
   if (d.pct >= 50) return "bg-amber-400";
-  if (d.pct > 0) return "bg-orange-400";
+  if (d.pct >= 25) return "bg-orange-400";
   return "bg-red-400";
 }
 
@@ -302,12 +303,12 @@ export default function DeviceHealthPage() {
               <p className="mt-1 text-2xl font-bold text-slate-800">{withDevice.length}</p>
             </div>
             <div className="rounded-2xl bg-white p-4 shadow-sm">
-              <p className="text-xs text-slate-500">Reporting well (≥80%)</p>
-              <p className="mt-1 text-2xl font-bold text-emerald-600">{withDevice.filter((a) => a.overallPct >= 80).length}</p>
+              <p className="text-xs text-slate-500">Reporting well (≥75%)</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-600">{withDevice.filter((a) => a.overallPct >= 75).length}</p>
             </div>
             <div className="rounded-2xl bg-white p-4 shadow-sm">
-              <p className="text-xs text-slate-500">Critical (&lt;50%)</p>
-              <p className="mt-1 text-2xl font-bold text-red-500">{withDevice.filter((a) => a.overallPct < 50).length}</p>
+              <p className="text-xs text-slate-500">Critical (&lt;25%)</p>
+              <p className="mt-1 text-2xl font-bold text-red-500">{withDevice.filter((a) => a.overallPct < 25).length}</p>
             </div>
           </div>
         )}
@@ -322,10 +323,10 @@ export default function DeviceHealthPage() {
           </div>
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-emerald-500" /> ≥80%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-amber-400" /> 50–79%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-orange-400" /> 1–49%</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> 0%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-emerald-500" /> 75–100%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-amber-400" /> 50–75%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-orange-400" /> 25–50%</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-6 rounded-sm bg-red-400" /> 0–25%</span>
           </div>
         )}
 
@@ -333,7 +334,7 @@ export default function DeviceHealthPage() {
 
         {!loading && data && data.lots.map((lot) => {
           const withDev = lot.animals.filter((a) => a.hasDevice && a.overallExpected > 0);
-          const ok = withDev.filter((a) => a.overallPct >= 80).length;
+          const ok = withDev.filter((a) => a.overallPct >= 75).length;
           const lotPct = withDev.length ? Math.round((ok / withDev.length) * 100) : 0;
           const isExpanded = expandedLots.has(lot.id);
 
