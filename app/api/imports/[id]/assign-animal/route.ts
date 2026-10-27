@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Selecciona un animal e introduce el peso y la fecha del pesaje." }, { status: 400 });
 
   const db = await getDb();
-  const importId = new ObjectId(id);
+  let importId = new ObjectId(id);
   const initial = await db.collection<ImportDoc>("imports").findOne({ _id: importId });
   if (!initial) return NextResponse.json({ error: "Import not found" }, { status: 404 });
   if (!initial.mimeType?.startsWith("video/") && !/\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(initial.filename)) {
@@ -27,8 +27,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
   const animal = await db.collection<AnimalDoc>("animals").findOne({ _id: new ObjectId(parsed.data.animalId) });
   if (!animal) return NextResponse.json({ error: "Animal not found" }, { status: 404 });
-  if (!(initial.ranchId ?? initial.farmId)?.equals(animal.ranchId ?? animal.farmId!) || !initial.lotId?.equals(animal.lotId)) {
-    return NextResponse.json({ error: "El animal debe pertenecer a la misma finca y al mismo lote que el vídeo." }, { status: 400 });
+  if (!(initial.ranchId ?? initial.farmId)?.equals(animal.ranchId ?? animal.farmId!)) {
+    return NextResponse.json({ error: "El animal debe pertenecer a la misma finca que el vídeo." }, { status: 400 });
+  }
+  if (initial.weight != null && initial.measuredAt &&
+      (initial.weight !== parsed.data.weight || initial.measuredAt.getTime() !== parsed.data.measuredAt.getTime())) {
+    return NextResponse.json({ error: "El peso y la fecha pertenecen al vídeo. Selecciona otro registro para añadir un pesaje diferente." }, { status: 400 });
+  }
+  if (initial.animalId && !initial.animalId.equals(animal._id)) {
+    const previous = await db.collection<ImportDoc>("imports").findOne({
+      animalId: animal._id, "storage.key": initial.storage.key, "storage.provider": initial.storage.provider,
+      weight: parsed.data.weight, measuredAt: parsed.data.measuredAt,
+    });
+    if (previous) return NextResponse.json({ ok: true });
+    importId = new ObjectId();
+    const { mutationToken: _token, mutationStartedAt: _started, ...record } = initial;
+    void _token; void _started;
+    await db.collection<ImportDoc>("imports").insertOne({ ...record, _id: importId, animalId: null, weightId: null, assignedAt: null });
   }
   const lock = await lockVideoImport(db, importId);
   if (!lock) return NextResponse.json({ error: "Este vídeo se está actualizando. Inténtalo de nuevo." }, { status: 409 });
@@ -90,7 +105,7 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
     await preserveVideoWeight(db, lock.item);
     await db.collection<ImportDoc>("imports").updateOne(
       { _id: importId, mutationToken: lock.token },
-      { $set: { animalId: null, weightId: null, weight: null, measuredAt: null, assignedAt: null, status: "stored", updatedAt: new Date() } },
+      { $set: { animalId: null, weightId: null, assignedAt: null, status: "stored", updatedAt: new Date() } },
     );
     await logAudit({ actorUserId: user.userId, actorRole: user.role, action: "admin.video.detach", target: { type: "import", id }, before: existing });
   } finally {

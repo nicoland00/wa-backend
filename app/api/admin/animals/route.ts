@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     if (measuredAt && !Number.isFinite(measuredAt.getTime())) {
       return NextResponse.json({ error: "La fecha del pesaje no es válida." }, { status: 400 });
     }
-    if (hasVideo && (!parsed.data.initialWeight || !measuredAt)) {
+    if ((hasVideo || parsed.data.initialWeight) && (!hasVideo || !parsed.data.initialWeight || !measuredAt)) {
       return NextResponse.json({ error: "Añade un peso positivo y la fecha del pesaje para subir el vídeo." }, { status: 400 });
     }
     if (hasVideo && videoFile.type && !videoFile.type.startsWith("video/")) {

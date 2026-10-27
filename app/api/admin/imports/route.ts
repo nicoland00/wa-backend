@@ -20,6 +20,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Valid lotId required" }, { status: 400 });
   }
 
+  const weight = Number(formData.get("weight"));
+  const measuredAtText = formData.get("measuredAt");
+  const measuredAt = typeof measuredAtText === "string" && measuredAtText ? new Date(measuredAtText) : null;
+  if (!Number.isFinite(weight) || weight <= 0 || !measuredAt || !Number.isFinite(measuredAt.getTime())) {
+    return NextResponse.json({ error: "Cada vídeo requiere un peso positivo y la fecha del pesaje." }, { status: 400 });
+  }
+
   const db = await getDb();
   const lot = await db.collection<LotDoc>("lots").findOne({ _id: new ObjectId(lotId) });
   if (!lot) return NextResponse.json({ error: "Lot not found" }, { status: 404 });
@@ -38,7 +45,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const sha256 = createHash("sha256").update(buffer).digest("hex");
 
-    const existing = await db.collection<ImportDoc>("imports").findOne({ sha256, lotId: new ObjectId(lotId) });
+    const existing = await db.collection<ImportDoc>("imports").findOne({ sha256, lotId: new ObjectId(lotId), weight, measuredAt });
     if (existing) continue;
 
     const stored = await uploadBufferToStorage({
@@ -52,6 +59,8 @@ export async function POST(request: NextRequest) {
       ranchId: ranch._id,
       lotId: new ObjectId(lotId),
       animalId: null,
+    weight,
+    measuredAt,
       source: "manual_upload",
       filename: file.name,
       mimeType: file.type || "video/mp4",

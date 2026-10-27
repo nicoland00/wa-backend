@@ -79,6 +79,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid payload" }, { status: 400 });
   }
+  if ((parsed.data.currentWeight !== undefined || parsed.data.initialWeight !== undefined) && !videoFile) {
+    return NextResponse.json({ error: "Cada peso debe incluir un vídeo." }, { status: 400 });
+  }
   const measuredAtInput = updateInput.measuredAt;
   const measuredAt = typeof measuredAtInput === "string" && measuredAtInput.trim()
     ? new Date(measuredAtInput)

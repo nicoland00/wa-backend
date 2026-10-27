@@ -19,7 +19,7 @@ type Animal = {
   ixorigueAnimalId?: string | null; brandNumber?: string; color?: string; initialWeight?: number;
   weightHistory?: Weight[]; latestWeight?: Weight | null; weightChangeKg?: number | null; videos?: AnimalHistoryVideo[];
 };
-type VideoImport = { _id: string; filename: string; sizeBytes: number | null; animalId: string | null; videoUrl?: string | null; mimeType?: string | null; };
+type VideoImport = { weight?: number | null; measuredAt?: string | null; _id: string; filename: string; sizeBytes: number | null; animalId: string | null; videoUrl?: string | null; mimeType?: string | null; };
 type Option = { value: string; label: string; };
 type MetadataResponse = { specieOptions: Option[]; sexOptions: Option[]; breedOptionsBySpecie: Record<string, string[]>; earTagOptions: string[]; deviceOptions: { value: string; label: string; disabled: boolean; assignedAnimalLabel: string | null; }[]; remoteError: string | null; };
 const emptyMetadata: MetadataResponse = { specieOptions: [], sexOptions: [], breedOptionsBySpecie: {}, earTagOptions: [], deviceOptions: [], remoteError: null };
@@ -74,6 +74,7 @@ export default function AdminAnimalsPage() {
   const [notice, setNotice] = useState<{ text: string; error: boolean; } | null>(null); const [loading, setLoading] = useState(true); const [syncing, setSyncing] = useState(false); const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(""); const [showCreate, setShowCreate] = useState(false); const [historyAnimal, setHistoryAnimal] = useState<Animal | null>(null);
   const [weightModal, setWeightModal] = useState<Animal | null>(null); const [weightInput, setWeightInput] = useState(""); const [measurementDate, setMeasurementDate] = useState(today);
+  const [videoQuery, setVideoQuery] = useState("");
   const [videoImports, setVideoImports] = useState<VideoImport[]>([]); const [videoAssignModal, setVideoAssignModal] = useState<Animal | null>(null); const [selectedVideoId, setSelectedVideoId] = useState(""); const [videosLoading, setVideosLoading] = useState(false);
   const videoRequestId = useRef(0);
   const [deleteModal, setDeleteModal] = useState<Animal | null>(null); const [modalError, setModalError] = useState("");
@@ -114,7 +115,7 @@ export default function AdminAnimalsPage() {
   async function createAnimal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy) return;
     if (!lotId) { notify("Selecciona el lote del nuevo animal.", true); return; }
-    if (form.video && !(Number(form.initialWeight) > 0)) { notify("Para añadir un vídeo, registra también el peso y la fecha del pesaje.", true); return; }
+    if ((form.video || form.initialWeight) && (!form.video || !(Number(form.initialWeight) > 0))) { notify("Para añadir un vídeo, registra también el peso y la fecha del pesaje.", true); return; }
     setBusy(true); setNotice(null);
     try {
       const payload = new FormData(); payload.set("lotId", lotId);
@@ -144,8 +145,8 @@ export default function AdminAnimalsPage() {
   }
   async function openVideoModal(animal: Animal) {
     const requestId = ++videoRequestId.current;
-    setVideoAssignModal(animal); setSelectedVideoId(""); setWeightInput(""); setMeasurementDate(today()); setModalError(""); setVideoImports([]); setVideosLoading(true);
-    try { const response = await fetch(`/api/imports?lotId=${animal.lotId}`, { cache: "no-store" }); if (!response.ok) throw new Error("No se pudieron cargar los vídeos del lote."); const data = await response.json() as { imports: VideoImport[]; }; if (requestId !== videoRequestId.current) return; setVideoImports(data.imports.filter((item) => item.mimeType?.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(item.filename))); } catch (error) { if (requestId === videoRequestId.current) setModalError(error instanceof Error ? error.message : "Error de conexión."); } finally { if (requestId === videoRequestId.current) setVideosLoading(false); }
+    setVideoQuery(""); setVideoAssignModal(animal); setSelectedVideoId(""); setWeightInput(""); setMeasurementDate(today()); setModalError(""); setVideoImports([]); setVideosLoading(true);
+    try { const response = await fetch(`/api/imports?ranchId=${ranchId}`, { cache: "no-store" }); if (!response.ok) throw new Error("No se pudieron cargar los vídeos del lote."); const data = await response.json() as { imports: VideoImport[]; }; if (requestId !== videoRequestId.current) return; setVideoImports(data.imports.filter((item) => item.mimeType?.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(item.filename))); } catch (error) { if (requestId === videoRequestId.current) setModalError(error instanceof Error ? error.message : "Error de conexión."); } finally { if (requestId === videoRequestId.current) setVideosLoading(false); }
   }
   async function submitMeasurement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const animal = videoAssignModal ?? weightModal; if (!animal || busy) return;
@@ -238,7 +239,7 @@ export default function AdminAnimalsPage() {
             </label>
             <label className="grid gap-2 text-xs font-medium text-slate-600">Fotografía<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, photo: event.target.files?.[0] ?? null })} className={field} />
             </label>
-            <label className="grid gap-2 text-xs font-medium text-slate-600">Vídeo del pesaje<input type="file" accept="video/*" onChange={(event) => setForm({ ...form, video: event.target.files?.[0] ?? null })} className={field} />
+            <label className="grid gap-2 text-xs font-medium text-slate-600">Vídeo del pesaje<input type="file" accept="video/*" required={!!form.initialWeight} onChange={(event) => setForm({ ...form, video: event.target.files?.[0] ?? null })} className={field} />
               <span className="font-normal text-slate-500">Se guardará en la sección Vídeos con su peso y fecha.</span>
             </label>
           </fieldset>
@@ -311,7 +312,7 @@ export default function AdminAnimalsPage() {
               <td className="px-5 py-4">
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setHistoryAnimal(animal)} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">Historial</button>{canManage && <>
-                    <button type="button" disabled={busy} onClick={() => { setWeightModal(animal); setWeightInput(""); setMeasurementDate(today()); setModalError(""); }} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">+ Peso</button>
+
                     <button type="button" disabled={busy} onClick={() => void openVideoModal(animal)} className="rounded-md bg-[#edf3ed] px-2.5 py-1.5 text-xs font-medium text-[#31574b] hover:bg-[#e2ebe2]">+ Vídeo</button>
                     <button type="button" disabled={busy} onClick={() => { setDeleteModal(animal); setModalError(""); }} aria-label={`Eliminar animal ${animal.earTagNumber}`} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
@@ -338,16 +339,16 @@ export default function AdminAnimalsPage() {
             </p>
             <p className="mt-1 text-xs text-slate-500">Último peso: {activeMeasurementAnimal.currentWeight > 0 ? `${kilos(activeMeasurementAnimal.currentWeight)} kg` : "Sin registrar"}{activeMeasurementAnimal.latestWeight ? ` · ${dateLabel(activeMeasurementAnimal.latestWeight.measuredAt)}` : ""}
             </p>
-          </div>{videoAssignModal && <label className="grid gap-2 text-xs font-medium text-slate-600">Vídeo del lote *<select required disabled={videosLoading || busy} value={selectedVideoId} onChange={(event) => setSelectedVideoId(event.target.value)} className={field}>
+          </div>{videoAssignModal && <label className="grid gap-2 text-xs font-medium text-slate-600">Buscar registro de vídeo y peso *<input type="search" value={videoQuery} onChange={(event) => setVideoQuery(event.target.value)} className={field} placeholder="Buscar por nombre, peso o fecha" /><select required disabled={videosLoading || busy} value={selectedVideoId} onChange={(event) => { setSelectedVideoId(event.target.value); const record = videoImports.find((video) => video._id === event.target.value); setWeightInput(record?.weight?.toString() ?? ""); setMeasurementDate(record?.measuredAt?.slice(0, 10) ?? ""); }} className={field}>
             <option value="">{videosLoading ? "Cargando vídeos…" : "Selecciona un vídeo"}
-            </option>{videoImports.map((video) => <option value={video._id} key={video._id} disabled={!!video.animalId}>{video.filename}{video.animalId ? " · Ya asignado" : ""}
+            </option>{videoImports.filter((video) => `${video.filename} ${video.weight ?? ""} ${video.measuredAt ?? ""}`.toLocaleLowerCase("es").includes(videoQuery.toLocaleLowerCase("es"))).map((video) => <option value={video._id} key={video._id} disabled={video.weight == null}>{video.filename} · {video.weight ?? "Sin peso"} kg · {video.measuredAt?.slice(0,10) ?? "Sin fecha"}{video.animalId ? " · Disponible para otro animal" : ""}
             </option>)}
           </select>
-            <span className="font-normal leading-5 text-slate-500">Los vídeos ya asignados se gestionan desde <Link className="text-[#31574b] underline underline-offset-2" href={`/dashboard/admin/imports?lotId=${activeMeasurementAnimal.lotId}&ranchId=${ranchId}`}>Vídeos</Link>. Allí también puedes subir archivos nuevos.</span>
+            <span className="font-normal leading-5 text-slate-500">El mismo vídeo y peso puede añadirse a animales de otros lotes. Gestiona la galería desde <Link className="text-[#31574b] underline underline-offset-2" href={`/dashboard/admin/imports?lotId=${activeMeasurementAnimal.lotId}&ranchId=${ranchId}`}>Vídeos</Link>. Allí también puedes subir archivos nuevos.</span>
           </label>}<div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-xs font-medium text-slate-600">Peso (kg) *<input autoFocus required disabled={busy} type="number" min="0.01" step="any" inputMode="decimal" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} placeholder="Ej. 500" className={field} />
+            <label className="grid gap-2 text-xs font-medium text-slate-600">Peso (kg) *<input autoFocus required readOnly disabled={busy} type="number" min="0.01" step="any" inputMode="decimal" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} placeholder="Ej. 500" className={field} />
             </label>
-            <label className="grid gap-2 text-xs font-medium text-slate-600">Fecha del pesaje *<input required disabled={busy} type="date" max={today()} value={measurementDate} onChange={(event) => setMeasurementDate(event.target.value)} className={field} />
+            <label className="grid gap-2 text-xs font-medium text-slate-600">Fecha del pesaje *<input required readOnly disabled={busy} type="date" max={today()} value={measurementDate} onChange={(event) => setMeasurementDate(event.target.value)} className={field} />
             </label>
           </div>
           <p className="text-xs leading-5 text-slate-500">La ganancia o pérdida se calcula respecto al pesaje anterior por fecha. Los registros antiguos se incorporan en su lugar en el historial.</p>{modalError && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{modalError}

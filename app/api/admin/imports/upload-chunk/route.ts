@@ -55,6 +55,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid chunk index/total" }, { status: 400 });
   }
 
+  const weight = Number(searchParams.get("weight"));
+  const measuredAtText = searchParams.get("measuredAt");
+  const measuredAt = measuredAtText ? new Date(measuredAtText) : null;
+  if (!Number.isFinite(weight) || weight <= 0 || !measuredAt || !Number.isFinite(measuredAt.getTime())) {
+    return NextResponse.json({ error: "Cada vídeo requiere un peso positivo y la fecha del pesaje." }, { status: 400 });
+  }
+
   const filename = decodeURIComponent(request.headers.get("x-filename") || "upload.mp4");
   const mimeType = request.headers.get("x-file-type") || "video/mp4";
   const fileSize = Number(request.headers.get("x-file-size") || "0") || null;
@@ -99,7 +106,7 @@ export async function POST(request: NextRequest) {
   await chunks.deleteMany({ uploadId });
 
   const sha256 = createHash("sha256").update(buffer).digest("hex");
-  const existing = await db.collection<ImportDoc>("imports").findOne({ sha256, lotId: new ObjectId(lotId) });
+  const existing = await db.collection<ImportDoc>("imports").findOne({ sha256, lotId: new ObjectId(lotId), weight, measuredAt });
   if (existing) {
     return NextResponse.json({ ok: true, completed: true, skipped: true, id: existing._id.toString() });
   }
@@ -112,6 +119,8 @@ export async function POST(request: NextRequest) {
     ranchId: ranch._id,
     lotId: new ObjectId(lotId),
     animalId: null,
+    weight,
+    measuredAt,
     source: "manual_upload",
     filename,
     mimeType,

@@ -59,6 +59,12 @@ describe("direct animal video validation", () => {
     expect(mocks.getDb).not.toHaveBeenCalled();
   });
 
+  it("rejects an initial weight without its video", async () => {
+    const form = createForm(); form.delete("video"); form.set("initialWeight", "300"); form.set("measuredAt", "2026-05-15");
+    const response = await POST(new NextRequest("http://localhost/api/admin/animals", { method: "POST", body: form }));
+    expect(response.status).toBe(400);
+    expect(mocks.getDb).not.toHaveBeenCalled();
+  });
   it("rejects a video with a weight but no measurement date", async () => {
     const form = createForm();
     form.set("initialWeight", "300");

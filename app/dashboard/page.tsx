@@ -42,11 +42,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
-  const [showWeightForm, setShowWeightForm] = useState(false);
-  const [weight, setWeight] = useState("");
-  const [measuredAt, setMeasuredAt] = useState(today);
-  const [savingWeight, setSavingWeight] = useState(false);
-  const [weightError, setWeightError] = useState("");
+
+
+
+  const savingWeight = false;
+
   const [notice, setNotice] = useState("");
   const selectedLotRef = useRef("");
   const selectedRanchRef = useRef("");
@@ -56,7 +56,7 @@ export default function DashboardPage() {
   const savingWeightRef = useRef(false);
   const hasAdminAccess = session ? canViewAdminScreens(session.user.role) : false;
   const canEditAdmin = session?.user.role === "admin";
-  const canAddWeight = session?.user.role === "admin" || session?.user.role === "retail";
+  const canAddWeight = session?.user.role === "admin";
 
   useEffect(() => { if (status === "unauthenticated") router.replace("/login"); }, [router, status]);
   useEffect(() => { selectedLotRef.current = selectedLotId; }, [selectedLotId]);
@@ -138,7 +138,7 @@ export default function DashboardPage() {
   const recentCount = animals.filter((animal) => { const age = animal.latestWeight ? Date.now() - new Date(animal.latestWeight.measuredAt).getTime() : Infinity; return age >= 0 && age <= 30 * 24 * 60 * 60 * 1000; }).length;
   const videosCount = animals.reduce((count, animal) => count + (animal.videos?.length ?? 0), 0);
 
-  function openAnimal(id: string) { setActiveAnimalId(id); setShowWeightForm(false); setWeight(""); setMeasuredAt(today()); setWeightError(""); setNotice(""); }
+  function openAnimal(id: string) { setActiveAnimalId(id); setNotice(""); }
   function selectLot(id: string) { setSelectedLotId(id); selectedLotRef.current = id; store(lotKey(selectedRanchId), id); }
   async function triggerSync() {
     setSyncing(true); setError("");
@@ -146,19 +146,7 @@ export default function DashboardPage() {
     catch { setError("No se pudo sincronizar la finca. Puedes volver a intentarlo."); }
     finally { setSyncing(false); }
   }
-  async function saveWeight(event: React.FormEvent) {
-    event.preventDefault();
-    if (!activeAnimal || savingWeight) return;
-    if (!Number.isFinite(Number(weight)) || Number(weight) <= 0 || !measuredAt) { setWeightError("Indica un peso mayor que cero y la fecha del pesaje."); return; }
-    savingWeightRef.current = true; setSavingWeight(true); setWeightError("");
-    try {
-      const response = await fetch(`/api/my/animals/${activeAnimal._id}/weights`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ weight: Number(weight), measuredAt }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo guardar el peso.");
-      await loadRanchMap(selectedRanchRef.current, true); setShowWeightForm(false); setWeight(""); setNotice("Pesaje guardado. El historial y la tarjeta están actualizados.");
-    } catch (err) { setWeightError(err instanceof Error ? err.message : "No se pudo guardar el peso."); }
-    finally { savingWeightRef.current = false; setSavingWeight(false); }
-  }
+
 
   if (status === "loading") return <main className="flex min-h-screen items-center justify-center bg-[#f6f7f4]"><p className="text-sm text-slate-500" role="status">Cargando Pastora…</p></main>;
   if (!session) return null;
@@ -203,9 +191,9 @@ export default function DashboardPage() {
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="animal-title" tabIndex={-1} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white outline-none" onClick={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#e1e5e1] bg-white p-5 sm:px-7"><div><p className="text-xs text-slate-500">Ficha del animal · {lotById.get(activeAnimal.lotId)?.name ?? "Sin lote"}</p><h2 id="animal-title" className="mt-1 text-xl font-semibold text-slate-900">{activeAnimal.earTagNumber || activeAnimal.name || "Sin crotal"}</h2></div><button disabled={savingWeight} onClick={() => setActiveAnimalId(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 disabled:opacity-50" aria-label="Cerrar ficha del animal">Cerrar ×</button></header>
         <div className="space-y-6 p-5 sm:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4"><AnimalWeightSummary animal={activeAnimal} />{canAddWeight ? <button disabled={savingWeight} onClick={() => { setShowWeightForm((open) => !open); setNotice(""); }} aria-expanded={showWeightForm} className="rounded-lg bg-[#31574b] px-3 py-2.5 text-xs font-medium text-white disabled:opacity-50">{showWeightForm ? "Cancelar pesaje" : "+ Registrar peso"}</button> : null}</div>
+          <div className="flex flex-wrap items-start justify-between gap-4"><AnimalWeightSummary animal={activeAnimal} />{canAddWeight ? <button disabled={savingWeight} onClick={() => router.push(`/dashboard/admin/imports?ranchId=${selectedRanchId}&lotId=${activeAnimal.lotId}`)} className="rounded-lg bg-[#31574b] px-3 py-2.5 text-xs font-medium text-white disabled:opacity-50">+ Vídeo y peso</button> : null}</div>
           {notice ? <p role="status" className="rounded-lg border border-[#d4e3d5] bg-[#f0f6ef] px-4 py-3 text-sm text-[#31574b]">{notice}</p> : null}
-          {showWeightForm ? <form onSubmit={(event) => void saveWeight(event)} className="rounded-lg border border-[#d8e2d8] bg-[#f7f9f5] p-4"><h3 className="text-sm font-semibold text-slate-800">Nuevo pesaje</h3><p className="mt-1 text-xs leading-relaxed text-slate-500">La comparación se calcula según la fecha del pesaje, también si registras un peso anterior.</p><div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><label className="grid gap-1.5 text-xs font-medium text-slate-600">Peso (kg)<input autoFocus type="number" inputMode="decimal" step="any" min="0.01" required value={weight} onChange={(event) => setWeight(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm" placeholder="Ej. 500" disabled={savingWeight} /></label><label className="grid gap-1.5 text-xs font-medium text-slate-600">Fecha del pesaje<input type="date" required value={measuredAt} onChange={(event) => setMeasuredAt(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm" disabled={savingWeight} /></label><button disabled={savingWeight} type="submit" className="self-end rounded-lg bg-[#31574b] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{savingWeight ? "Guardando…" : "Guardar peso"}</button></div>{weightError ? <p role="alert" className="mt-3 text-xs text-red-700">{weightError}</p> : null}</form> : null}
+
           <dl className="grid grid-cols-2 gap-4 rounded-lg border border-[#e1e5e1] bg-[#fafbf9] p-4 sm:grid-cols-4">{[["Raza", activeAnimal.breed || "—"], ["Sexo", activeAnimal.sex || "—"], ["Marca", activeAnimal.brandNumber || "—"], ["Nacimiento", activeAnimal.birthDate ? formatRecordDate(activeAnimal.birthDate) : "—"]].map(([label, value]) => <div key={label}><dt className="text-[11px] text-slate-500">{label}</dt><dd className="mt-1 text-xs font-medium text-slate-800">{value}</dd></div>)}</dl>
           <AnimalWeightHistory records={activeAnimal.weightHistory} videos={activeAnimal.videos?.length ? activeAnimal.videos : activeAnimal.videoUrl ? [{ url: activeAnimal.videoUrl }] : []} />
           {hasAdminAccess ? <p className="border-t border-slate-100 pt-4 text-xs text-slate-500">Puedes añadir y eliminar los vídeos de este animal desde <Link href={`/dashboard/admin/imports?ranchId=${selectedRanchId}&lotId=${activeAnimal.lotId}`} className="font-medium text-[#31574b] underline underline-offset-2">la sección de vídeos</Link>.</p> : null}

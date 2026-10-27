@@ -34,7 +34,7 @@ let animal: AnimalDoc;
 let weights: Map<string, AnimalWeightDoc>;
 let videos: { key?: string; importId?: ObjectId }[];
 const collections = {
-  imports: { findOne: vi.fn(), updateOne: vi.fn(), deleteOne: vi.fn() },
+  imports: { insertOne: vi.fn(), findOne: vi.fn(), updateOne: vi.fn(), deleteOne: vi.fn() },
   animals: { find: vi.fn(), findOne: vi.fn(), updateOne: vi.fn(), updateMany: vi.fn() },
   animal_weights: { findOne: vi.fn(), updateOne: vi.fn(), updateMany: vi.fn(), deleteOne: vi.fn(), deleteMany: vi.fn() },
   ranches: { findOne: vi.fn() },
@@ -119,12 +119,40 @@ describe("video mutation access and validation", () => {
     expect(mocks.lockVideoImport).not.toHaveBeenCalled();
   });
 
-  it.each(["lotId", "ranchId"] as const)("rejects an animal from another %s before mutation", async (field) => {
+  it.each(["ranchId"] as const)("rejects an animal from another %s before mutation", async (field) => {
     animal[field] = new ObjectId();
     const response = await assignVideo(assignmentRequest(), context());
     expect(response.status).toBe(400);
     expect(mocks.lockVideoImport).not.toHaveBeenCalled();
     expect(collections.imports.updateOne).not.toHaveBeenCalled();
+    expect(collections.animal_weights.updateOne).not.toHaveBeenCalled();
+  });
+});
+
+describe("cross-lot paired records", () => {
+  it("accepts another lot in the same ranch", async () => {
+    animal.lotId = new ObjectId();
+    expect((await assignVideo(assignmentRequest(), context())).status).toBe(200);
+    expect(weights.size).toBe(1);
+  });
+  it("adds the joint record to another animal without moving the original assignment", async () => {
+    const originalAnimalId = new ObjectId();
+    item.animalId = originalAnimalId; item.weight = 500; item.measuredAt = measuredAt;
+    let copy: ImportDoc | null = null;
+    collections.imports.findOne.mockImplementation(async (query) => query._id instanceof ObjectId && query._id.equals(importId) ? item : null);
+    collections.imports.insertOne.mockImplementation(async (record) => { copy = record; return { insertedId: record._id }; });
+    collections.imports.updateOne.mockImplementation(async (_query, update) => { Object.assign(copy!, update.$set ?? {}); return { matchedCount: 1 }; });
+    mocks.lockVideoImport.mockImplementation(async () => ({ item: copy, token: "copy-token" }));
+    animal.lotId = new ObjectId();
+    expect((await assignVideo(assignmentRequest(), context())).status).toBe(200);
+    expect(item.animalId).toEqual(originalAnimalId);
+    expect(collections.imports.insertOne).toHaveBeenCalledWith(expect.objectContaining({ storage: item.storage, weight: 500, measuredAt }));
+    expect([...weights.values()][0].animalId).toEqual(animalId);
+    expect([...weights.values()][0].importId).not.toEqual(importId);
+  });
+  it("rejects changing the weighing of a saved video/weight object", async () => {
+    item.weight = 300; item.measuredAt = measuredAt;
+    expect((await assignVideo(assignmentRequest(), context())).status).toBe(400);
     expect(collections.animal_weights.updateOne).not.toHaveBeenCalled();
   });
 });

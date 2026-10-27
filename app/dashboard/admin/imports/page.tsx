@@ -7,7 +7,7 @@ import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
 
 type Ranch = { _id: string; name: string };
 type Lot = { _id: string; name: string; ranchId: string };
-type Animal = { _id: string; earTagNumber: string; name?: string | null; breed: string; currentWeight: number };
+type Animal = { _id: string; earTagNumber: string; name?: string | null; breed: string; currentWeight: number; lotId?: string };
 type VideoImport = {
   _id: string;
   filename: string;
@@ -61,9 +61,10 @@ function isVideo(item: VideoImport) {
   return item.mimeType?.startsWith("video/") || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(item.filename);
 }
 
-function VideoRow({ item, animals, canEdit, onAssign, onUnassign, onDelete }: {
+function VideoRow({ item, animals, lots, canEdit, onAssign, onUnassign, onDelete }: {
   item: VideoImport;
   animals: Animal[];
+  lots: Lot[];
   canEdit: boolean;
   onAssign: (id: string, assignment: Assignment) => Promise<void>;
   onUnassign: (id: string) => Promise<void>;
@@ -144,7 +145,7 @@ function VideoRow({ item, animals, canEdit, onAssign, onUnassign, onDelete }: {
         </div>
         <div className="min-w-36 text-sm">
           <p className="font-medium text-slate-800">{animalLabel}</p>
-          {item.animalId ? <p className="mt-1 text-xs text-slate-500">{assignedAnimal?.name || assignedAnimal?.breed || ""}</p> : <p className="mt-1 text-xs text-slate-500">Añade animal, peso y fecha</p>}
+          {item.animalId ? <p className="mt-1 text-xs text-slate-500">{assignedAnimal?.name || assignedAnimal?.breed || ""}</p> : <p className="mt-1 text-xs text-slate-500">Selecciona un animal de cualquier lote</p>}
           {item.weight != null ? (
             <div className="mt-2">
               <p className="font-medium tabular-nums text-slate-800">{numberFormat.format(item.weight)} kg <span className="text-xs font-normal text-slate-500">· {formatDate(item.measuredAt)}</span></p>
@@ -153,25 +154,25 @@ function VideoRow({ item, animals, canEdit, onAssign, onUnassign, onDelete }: {
           ) : item.animalId ? <p className="mt-2 text-xs text-amber-800">Vídeo anterior sin pesaje vinculado</p> : null}
         </div>
         {canEdit ? <div className="flex gap-2 sm:flex-col sm:items-stretch">
-          <button type="button" disabled={busy} onClick={() => { setEditing(!editing); setDeleting(false); setError(""); }} aria-expanded={editing} className={item.animalId ? secondaryClass : buttonClass}>{editing ? "Cerrar" : item.animalId ? "Añadir actualización" : "Asignar y pesar"}</button>
+          <button type="button" disabled={busy} onClick={() => { setEditing(!editing); setDeleting(false); setError(""); }} aria-expanded={editing} className={item.animalId ? secondaryClass : buttonClass}>{editing ? "Cerrar" : item.animalId ? "Añadir a otro animal" : "Asignar y pesar"}</button>
           <button type="button" disabled={busy} onClick={() => { setDeleting(!deleting); setEditing(false); setError(""); }} aria-expanded={deleting} className="rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">Eliminar vídeo</button>
         </div> : null}
       </div>
       {editing ? <form onSubmit={(event) => void submitAssignment(event)} className="border-t border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-        <p className="text-sm font-medium text-slate-800">{item.animalId ? "Crear una actualización con este vídeo" : "Registrar vídeo y pesaje"}</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">La fecha debe corresponder al día del pesaje. Se comparará con el registro anterior del animal.{item.animalId ? " Se añadirá un pesaje nuevo y se conservarán los anteriores, aunque cambies el animal." : ""}</p>
+        <p className="text-sm font-medium text-slate-800">{item.animalId ? "Añadir este vídeo y peso a otro animal" : "Registrar vídeo y pesaje"}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">La fecha debe corresponder al día del pesaje. Se comparará con el registro anterior del animal.{item.animalId ? " El registro original se conserva en el otro animal, aunque pertenezca a otro lote." : ""}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-[2fr_1fr_1fr]">
           <label className="grid gap-1.5 text-xs font-medium text-slate-600">Animal
             <select value={selectedAnimalId} onChange={(event) => setSelectedAnimalId(event.target.value)} required disabled={busy} className={inputClass}>
               <option value="">Selecciona un animal</option>
-              {animals.map((animal) => <option key={animal._id} value={animal._id}>{animal.earTagNumber || animal.name || animal._id}{animal.name && animal.earTagNumber ? ` · ${animal.name}` : ""}{animal.breed ? ` · ${animal.breed}` : ""}</option>)}
+              {animals.map((animal) => <option key={animal._id} value={animal._id}>{animal.earTagNumber || animal.name || animal._id}{animal.name && animal.earTagNumber ? ` · ${animal.name}` : ""}{animal.breed ? ` · ${animal.breed}` : ""} · {lots.find((lot) => lot._id === animal.lotId)?.name ?? "Sin lote"}</option>)}
             </select>
           </label>
           <label className="grid gap-1.5 text-xs font-medium text-slate-600">Peso del pesaje (kg)
-            <input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="Ej. 500" value={weight} onChange={(event) => setWeight(event.target.value)} required disabled={busy} className={inputClass} />
+            <input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="Ej. 500" value={weight} onChange={(event) => setWeight(event.target.value)} required readOnly={item.weight != null} disabled={busy} className={inputClass} />
           </label>
           <label className="grid gap-1.5 text-xs font-medium text-slate-600">Fecha del pesaje
-            <input type="date" value={measuredAt} onChange={(event) => setMeasuredAt(event.target.value)} required disabled={busy} className={inputClass} />
+            <input type="date" value={measuredAt} onChange={(event) => setMeasuredAt(event.target.value)} required readOnly={item.weight != null} disabled={busy} className={inputClass} />
           </label>
         </div>
         {selectedAnimal ? <p className="mt-3 text-xs text-slate-500">Último peso registrado del animal: <strong className="font-medium text-slate-700">{numberFormat.format(selectedAnimal.currentWeight)} kg</strong>. La comparación se calculará según la fecha que indiques.</p> : null}
@@ -207,6 +208,8 @@ export default function AdminImportsPage() {
   const [loading, setLoading] = useState(false);
   const [loadingLots, setLoadingLots] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadWeight, setUploadWeight] = useState("");
+  const [uploadDate, setUploadDate] = useState(today);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadPercent, setUploadPercent] = useState(0);
   const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
@@ -259,8 +262,8 @@ export default function AdminImportsPage() {
     const controller = new AbortController();
     setLoading(true);
     void Promise.all([
-      readJson<{ animals: Animal[] }>(`/api/admin/animals?ranchId=${ranchId}&lotId=${lotId}`, { signal: controller.signal }),
-      readJson<{ imports: VideoImport[] }>(`/api/imports?lotId=${lotId}`, { signal: controller.signal }),
+      readJson<{ animals: Animal[] }>(`/api/admin/animals?ranchId=${ranchId}`, { signal: controller.signal }),
+      readJson<{ imports: VideoImport[] }>(`/api/imports?ranchId=${ranchId}`, { signal: controller.signal }),
     ]).then(([animalData, importData]) => {
       setAnimals(animalData.animals ?? []);
       setImports((importData.imports ?? []).filter(isVideo));
@@ -272,7 +275,7 @@ export default function AdminImportsPage() {
     const valid = files.filter((file) => file.size > 0 && (file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(file.name)));
     if (valid.length !== files.length) setNotice({ text: "Solo se admiten archivos de vídeo que no estén vacíos.", error: true });
     else setNotice(null);
-    setQueuedFiles((current) => [...current, ...valid.filter((file) => !current.some((existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified))]);
+    setQueuedFiles(valid.slice(0, 1));
   }
 
   async function uploadOneFile(file: File): Promise<"uploaded" | "skipped"> {
@@ -284,7 +287,7 @@ export default function AdminImportsPage() {
       const blob = file.slice(start, Math.min(start + chunkSize, file.size));
       const result = await new Promise<{ status: number; completed?: boolean; skipped?: boolean; error?: string; ok?: boolean }>((resolve) => {
         const xhr = new XMLHttpRequest();
-        const query = new URLSearchParams({ uploadId, lotId, index: String(index), total: String(total) });
+        const query = new URLSearchParams({ uploadId, lotId, index: String(index), total: String(total), weight: uploadWeight, measuredAt: uploadDate });
         xhr.open("POST", `/api/admin/imports/upload-chunk?${query}`);
         xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
         xhr.setRequestHeader("x-file-type", file.type || "video/mp4");
@@ -304,6 +307,7 @@ export default function AdminImportsPage() {
 
   async function handleUpload() {
     if (!lotId || !queuedFiles.length || uploading) return;
+    if (!(Number(uploadWeight) > 0) || !uploadDate) { setNotice({ text: "Indica el peso y la fecha que acompañan al vídeo.", error: true }); return; }
     setUploading(true);
     setNotice(null);
     let uploaded = 0;
@@ -355,7 +359,7 @@ export default function AdminImportsPage() {
     if (filter === "pending" && item.animalId) return false;
     if (filter === "assigned" && !item.animalId) return false;
     const animal = animals.find((entry) => entry._id === item.animalId);
-    return `${item.filename} ${animal?.earTagNumber ?? ""} ${animal?.name ?? ""}`.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es"));
+    return `${item.filename} ${item.weight ?? ""} ${item.measuredAt ?? ""} ${animal?.earTagNumber ?? ""} ${animal?.name ?? ""} ${lots.find((lot) => lot._id === animal?.lotId)?.name ?? ""}`.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es"));
   });
 
   if (status === "loading") return <div className="p-8 text-sm text-slate-500" role="status">Cargando biblioteca…</div>;
@@ -390,11 +394,15 @@ export default function AdminImportsPage() {
       {notice ? <div role={notice.error ? "alert" : "status"} className={`flex items-start justify-between gap-3 rounded-md border px-4 py-3 text-sm leading-6 ${notice.error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p>{notice.text}</p><button type="button" onClick={() => setNotice(null)} aria-label="Cerrar aviso" className="shrink-0 px-1 font-medium">×</button></div> : null}
 
       {canEdit && lotId ? <section aria-labelledby="upload-heading" className="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
-        <div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs font-medium text-slate-500">1</span><div><h2 id="upload-heading" className="text-sm font-semibold text-slate-800">Subir vídeos al lote</h2><p className="mt-1 text-xs text-slate-500">Después, asigna el animal, el peso y la fecha en la biblioteca.</p></div></div>
+        <div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs font-medium text-slate-500">1</span><div><h2 id="upload-heading" className="text-sm font-semibold text-slate-800">Subir vídeos al lote</h2><p className="mt-1 text-xs text-slate-500">Guarda vídeo, peso y fecha juntos. Después podrás asignar el registro a animales de cualquier lote de esta finca.</p></div></div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-600">Peso del vídeo (kg) *<input type="number" min="0.01" step="any" required value={uploadWeight} disabled={uploading} onChange={(event) => setUploadWeight(event.target.value)} className={inputClass} placeholder="Ej. 500" /></label>
+          <label className="grid gap-1.5 text-xs font-medium text-slate-600">Fecha del pesaje *<input type="date" required value={uploadDate} disabled={uploading} onChange={(event) => setUploadDate(event.target.value)} className={inputClass} /></label>
+        </div>
         <div onDragOver={(event) => { event.preventDefault(); if (!uploading) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (!uploading) queueFiles(Array.from(event.dataTransfer.files)); }} className={`mt-4 flex flex-col items-center justify-between gap-4 rounded-md border border-dashed px-5 py-6 sm:flex-row ${dragging ? "border-emerald-700 bg-emerald-50" : "border-slate-300 bg-slate-50/50"}`}>
-          <div className="flex items-center gap-3"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-7 w-7 shrink-0 text-slate-400"><path d="M12 16V4m-4 4 4-4 4 4M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" /></svg><div><p className="text-sm text-slate-700">Arrastra tus vídeos aquí</p><p className="mt-1 text-xs text-slate-500">Puedes seleccionar varios archivos a la vez.</p></div></div>
+          <div className="flex items-center gap-3"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-7 w-7 shrink-0 text-slate-400"><path d="M12 16V4m-4 4 4-4 4 4M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" /></svg><div><p className="text-sm text-slate-700">Arrastra tus vídeos aquí</p><p className="mt-1 text-xs text-slate-500">Selecciona un vídeo por pesaje. Vídeo, peso y fecha se guardan juntos.</p></div></div>
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className={secondaryClass}>Seleccionar archivos</button>
-          <input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.m4v,.avi,.mkv" multiple className="sr-only" tabIndex={-1} aria-label="Seleccionar vídeos" disabled={uploading} onChange={(event) => { queueFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+          <input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.m4v,.avi,.mkv" className="sr-only" tabIndex={-1} aria-label="Seleccionar vídeos" disabled={uploading} onChange={(event) => { queueFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         </div>
         {queuedFiles.length ? <div className="mt-3">
           <ul className="max-h-44 divide-y divide-slate-100 overflow-auto">{queuedFiles.map((file, index) => <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="min-w-0 truncate text-slate-600">{file.name} <span className="text-slate-400">· {formatBytes(file.size)}</span></span><button type="button" disabled={uploading} aria-label={`Quitar ${file.name} de la selección`} onClick={() => setQueuedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} className="shrink-0 rounded px-2 py-1 text-slate-500 hover:bg-slate-100 disabled:opacity-40">Quitar</button></li>)}</ul>
@@ -404,9 +412,9 @@ export default function AdminImportsPage() {
       </section> : null}
 
       <section aria-labelledby="library-heading">
-        <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3">{canEdit ? <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs font-medium text-slate-500">2</span> : null}<div><h2 id="library-heading" className="text-sm font-semibold text-slate-800">Biblioteca del lote</h2><p className="mt-1 text-xs text-slate-500">{canEdit ? "Asigna cada vídeo y registra el pesaje del animal." : "Consulta los vídeos y los pesajes de los animales."}</p></div></div><input type="search" aria-label="Buscar vídeos por nombre o animal" placeholder="Buscar vídeo o animal…" value={search} onChange={(event) => setSearch(event.target.value)} className={`${inputClass} sm:max-w-64`} disabled={!lotId} /></div>
+        <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3">{canEdit ? <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs font-medium text-slate-500">2</span> : null}<div><h2 id="library-heading" className="text-sm font-semibold text-slate-800">Galería de vídeos y pesos · todos los lotes</h2><p className="mt-1 text-xs text-slate-500">{canEdit ? "Asigna cada vídeo y registra el pesaje del animal." : "Consulta los vídeos y los pesajes de los animales."}</p></div></div><input type="search" aria-label="Buscar vídeos por nombre o animal" placeholder="Buscar vídeo, peso, animal o lote…" value={search} onChange={(event) => setSearch(event.target.value)} className={`${inputClass} sm:max-w-64`} disabled={!lotId} /></div>
         <div className="my-4 flex gap-1 border-b border-slate-200" aria-label="Filtrar vídeos">{([{ value: "all", label: "Todos", count: imports.length }, { value: "pending", label: "Sin asignar", count: imports.length - assignedCount }, { value: "assigned", label: "Asignados", count: assignedCount }] as const).map((option) => <button key={option.value} type="button" aria-pressed={filter === option.value} onClick={() => setFilter(option.value)} className={`border-b-2 px-3 py-2.5 text-xs font-medium transition ${filter === option.value ? "border-[#285447] text-[#285447]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{option.label} <span className="ml-1 text-slate-400">{option.count}</span></button>)}</div>
-        {loading || loadingLots ? <div className="rounded-lg border border-slate-200 bg-white p-12 text-center text-sm text-slate-500" role="status">Cargando vídeos y animales…</div> : !lotId ? <div className="rounded-lg border border-slate-200 bg-white p-10 text-center"><p className="text-sm font-medium text-slate-700">Selecciona una explotación y un lote</p><p className="mt-2 text-xs text-slate-500">Aquí verás sus vídeos y podrás seguir la evolución de cada animal.</p></div> : !visibleImports.length ? <div className="rounded-lg border border-slate-200 bg-white p-10 text-center"><p className="text-sm font-medium text-slate-700">{imports.length ? "No hay vídeos que coincidan" : "Este lote aún no tiene vídeos"}</p><p className="mt-2 text-xs text-slate-500">{imports.length ? "Prueba otra búsqueda o cambia el filtro." : canEdit ? "Selecciona archivos en el área de subida para empezar." : "Los vídeos aparecerán aquí cuando se registren."}</p></div> : <div className="space-y-3">{visibleImports.map((item) => <VideoRow key={`${item._id}-${item.animalId}-${item.weight}-${item.measuredAt}`} item={item} animals={animals} canEdit={canEdit && !uploading} onAssign={handleAssign} onUnassign={handleUnassign} onDelete={handleDelete} />)}</div>}
+        {loading || loadingLots ? <div className="rounded-lg border border-slate-200 bg-white p-12 text-center text-sm text-slate-500" role="status">Cargando vídeos y animales…</div> : !lotId ? <div className="rounded-lg border border-slate-200 bg-white p-10 text-center"><p className="text-sm font-medium text-slate-700">Selecciona una explotación y un lote</p><p className="mt-2 text-xs text-slate-500">Aquí verás sus vídeos y podrás seguir la evolución de cada animal.</p></div> : !visibleImports.length ? <div className="rounded-lg border border-slate-200 bg-white p-10 text-center"><p className="text-sm font-medium text-slate-700">{imports.length ? "No hay vídeos que coincidan" : "Este lote aún no tiene vídeos"}</p><p className="mt-2 text-xs text-slate-500">{imports.length ? "Prueba otra búsqueda o cambia el filtro." : canEdit ? "Selecciona archivos en el área de subida para empezar." : "Los vídeos aparecerán aquí cuando se registren."}</p></div> : <div className="space-y-3">{visibleImports.map((item) => <VideoRow key={`${item._id}-${item.animalId}-${item.weight}-${item.measuredAt}`} item={item} animals={animals} lots={lots} canEdit={canEdit && !uploading} onAssign={handleAssign} onUnassign={handleUnassign} onDelete={handleDelete} />)}</div>}
       </section>
     </main>
   );
