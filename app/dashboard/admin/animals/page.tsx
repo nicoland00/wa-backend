@@ -73,7 +73,7 @@ export default function AdminAnimalsPage() {
   const [metadata, setMetadata] = useState<MetadataResponse>(emptyMetadata); const [ranchId, setRanchId] = useState(""); const [lotId, setLotId] = useState("");
   const [notice, setNotice] = useState<{ text: string; error: boolean; } | null>(null); const [loading, setLoading] = useState(true); const [syncing, setSyncing] = useState(false); const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(""); const [showCreate, setShowCreate] = useState(false); const [historyAnimal, setHistoryAnimal] = useState<Animal | null>(null);
-  const [weightModal, setWeightModal] = useState<Animal | null>(null); const [weightInput, setWeightInput] = useState(""); const [measurementDate, setMeasurementDate] = useState(today);
+  const [weightInput, setWeightInput] = useState(""); const [measurementDate, setMeasurementDate] = useState(today);
   const [videoQuery, setVideoQuery] = useState("");
   const [videoImports, setVideoImports] = useState<VideoImport[]>([]); const [videoAssignModal, setVideoAssignModal] = useState<Animal | null>(null); const [selectedVideoId, setSelectedVideoId] = useState(""); const [videosLoading, setVideosLoading] = useState(false);
   const videoRequestId = useRef(0);
@@ -149,21 +149,21 @@ export default function AdminAnimalsPage() {
     try { const response = await fetch(`/api/imports?ranchId=${ranchId}`, { cache: "no-store" }); if (!response.ok) throw new Error("No se pudieron cargar los vídeos del lote."); const data = await response.json() as { imports: VideoImport[]; }; if (requestId !== videoRequestId.current) return; setVideoImports(data.imports.filter((item) => item.mimeType?.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(item.filename))); } catch (error) { if (requestId === videoRequestId.current) setModalError(error instanceof Error ? error.message : "Error de conexión."); } finally { if (requestId === videoRequestId.current) setVideosLoading(false); }
   }
   async function submitMeasurement(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const animal = videoAssignModal ?? weightModal; if (!animal || busy) return;
+    event.preventDefault(); const animal = videoAssignModal; if (!animal || busy) return;
     const weight = Number(weightInput); if (!Number.isFinite(weight) || weight <= 0 || !measurementDate) { setModalError("Introduce un peso mayor que cero y la fecha del pesaje."); return; }
-    if (videoAssignModal && !selectedVideoId) { setModalError("Selecciona un vídeo para continuar."); return; }
+    if (!selectedVideoId) { setModalError("Selecciona un vídeo para continuar."); return; }
     setBusy(true); setModalError("");
     try {
-      const response = await fetch(videoAssignModal ? `/api/imports/${selectedVideoId}/assign-animal` : `/api/my/animals/${animal._id}/weights`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(videoAssignModal ? { animalId: animal._id } : {}), weight, measuredAt: measurementDate }) });
+      const response = await fetch(`/api/imports/${selectedVideoId}/assign-animal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ animalId: animal._id, weight, measuredAt: measurementDate }) });
       const data = await readJson<{ error?: string; }>(response); if (!response.ok) throw new Error(data.error ?? "No se pudo guardar el registro.");
-      setWeightModal(null); setVideoAssignModal(null);
-      try { await refreshAnimals(); notify(videoAssignModal ? "Vídeo y pesaje guardados. El seguimiento del animal está actualizado." : "Pesaje registrado. La evolución del animal está actualizada."); } catch { notify("Registro guardado. No se pudo actualizar la lista; recarga la página para ver los datos más recientes.", true); }
+      setVideoAssignModal(null);
+      try { await refreshAnimals(); notify("Vídeo y peso guardados. El seguimiento del animal está actualizado."); } catch { notify("Registro guardado. No se pudo actualizar la lista; recarga la página para ver los datos más recientes.", true); }
     } catch (error) { setModalError(error instanceof Error ? error.message : "No se pudo guardar. Comprueba tu conexión."); } finally { setBusy(false); }
   }
   if (status === "loading") return <div className="p-6 text-sm text-slate-500">Cargando animales…</div>;
   if (!canView) return <div className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</div>;
   const filteredAnimals = animals.filter((animal) => `${animal.earTagNumber} ${animal.name ?? ""} ${animal.breed}`.toLocaleLowerCase("es").includes(query.toLocaleLowerCase("es")));
-  const activeMeasurementAnimal = videoAssignModal ?? weightModal;
+  const activeMeasurementAnimal = videoAssignModal;
   return (
     <main className="mx-auto w-full max-w-[1440px] space-y-6 p-4 sm:p-7 lg:p-9">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -332,7 +332,7 @@ export default function AdminAnimalsPage() {
           </table>
         </div>
       </section>
-      {activeMeasurementAnimal && <Modal title={videoAssignModal ? "Añadir vídeo y pesaje" : "Registrar pesaje"} busy={busy} onClose={() => { setWeightModal(null); setVideoAssignModal(null); }}>
+      {activeMeasurementAnimal && <Modal title="Añadir vídeo y peso" busy={busy} onClose={() => { setVideoAssignModal(null); }}>
         <form onSubmit={submitMeasurement} className="space-y-5">
           <div className="rounded-md border border-[#e1e5e1] bg-[#f8f9f6] p-3">
             <p className="text-sm font-semibold text-slate-800">{activeMeasurementAnimal.earTagNumber}{activeMeasurementAnimal.name ? ` · ${activeMeasurementAnimal.name}` : ""}
@@ -353,8 +353,8 @@ export default function AdminAnimalsPage() {
           </div>
           <p className="text-xs leading-5 text-slate-500">La ganancia o pérdida se calcula respecto al pesaje anterior por fecha. Los registros antiguos se incorporan en su lugar en el historial.</p>{modalError && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{modalError}
           </p>}<div className="flex justify-end gap-3 border-t border-[#e1e5e1] pt-4">
-            <button type="button" disabled={busy} onClick={() => { setWeightModal(null); setVideoAssignModal(null); }} className={secondary}>Cancelar</button>
-            <button type="submit" disabled={busy || (videoAssignModal != null && !selectedVideoId)} className={primary}>{busy ? "Guardando…" : videoAssignModal ? "Guardar vídeo y peso" : "Guardar pesaje"}
+            <button type="button" disabled={busy} onClick={() => { setVideoAssignModal(null); }} className={secondary}>Cancelar</button>
+            <button type="submit" disabled={busy || (videoAssignModal != null && !selectedVideoId)} className={primary}>{busy ? "Guardando…" : "Guardar vídeo y peso"}
             </button>
           </div>
         </form>
