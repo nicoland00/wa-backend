@@ -1,14 +1,15 @@
+import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { deleteStoredFile, getSignedDownloadUrl } from "@/lib/storage";
-import { lockVideoImport, preserveVideoWeight, removeAnimalVideoReferences, unlockVideoImport } from "@/lib/server/animal-updates";
+import { lockVideoImport, preserveVideoWeight, removeAnimalVideoReferences, unlockVideoImport, recomputeAnimalCurrentWeight } from "@/lib/server/animal-updates";
 import { logAudit } from "@/lib/server/audit";
 import { enrichImports } from "@/lib/server/import-history";
 import { objectIdSchema } from "@/lib/validators/common";
-import type { ImportDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalWeightDoc, ImportDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await requireSessionUser();
@@ -74,4 +75,45 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
   } finally {
     await unlockVideoImport(db, importId, lock.token);
   }
+}
+
+const videoWeightSchema = z.object({
+  weight: z.coerce.number().finite().positive(),
+  measuredAt: z.string().trim().min(1).pipe(z.coerce.date()),
+});
+
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const user = await requireSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdmin(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { id } = await context.params;
+  if (!objectIdSchema.safeParse(id).success) return NextResponse.json({ error: "Invalid import id" }, { status: 400 });
+  const parsed = videoWeightSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Indica un peso positivo y la fecha del pesaje." }, { status: 400 });
+  const db = await getDb();
+  const importId = new ObjectId(id);
+  const exists = await db.collection<ImportDoc>("imports").findOne({ _id: importId });
+  if (!exists) return NextResponse.json({ error: "Vídeo no encontrado." }, { status: 404 });
+  if (!exists.mimeType?.startsWith("video/") && !/\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(exists.filename)) return NextResponse.json({ error: "El archivo debe ser un vídeo." }, { status: 400 });
+  const lock = await lockVideoImport(db, importId);
+  if (!lock) return NextResponse.json({ error: "El vídeo se está actualizando. Inténtalo de nuevo." }, { status: 409 });
+  try {
+    // Complete a previously uploaded video without copying the file or altering
+    // unrelated historical measurements. Linked historical weights stay intact.
+    if (lock.item.weightId) return NextResponse.json({ error: "Este vídeo ya tiene un pesaje vinculado." }, { status: 409 });
+    const now = new Date();
+    const weightId = lock.item.animalId ? new ObjectId() : null;
+    if (weightId && lock.item.animalId) {
+      await db.collection<AnimalWeightDoc>("animal_weights").updateOne({ _id: weightId }, { $setOnInsert: {
+        animalId: lock.item.animalId, importId, weight: parsed.data.weight, measuredAt: parsed.data.measuredAt,
+        source: "admin", syncStatus: "pending", syncError: null, ixorigueWeightId: null, createdAt: now, updatedAt: now,
+      } }, { upsert: true });
+    }
+    await db.collection<ImportDoc>("imports").updateOne({ _id: importId, mutationToken: lock.token }, { $set: {
+      weight: parsed.data.weight, measuredAt: parsed.data.measuredAt, weightId, updatedAt: now,
+    } });
+    if (lock.item.animalId) await recomputeAnimalCurrentWeight(db, lock.item.animalId);
+    await logAudit({ actorUserId: user.userId, actorRole: user.role, action: "admin.video.weight.complete", target: { type: "import", id }, after: parsed.data });
+    return NextResponse.json({ ok: true });
+  } finally { await unlockVideoImport(db, importId, lock.token); }
 }

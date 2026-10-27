@@ -17,6 +17,7 @@ type HistoryVideo = {
   measuredAt: Date | string | null;
   weight: number | null;
   deltaKg: number | null;
+  weightInherited?: boolean;
 };
 
 /** One shared projection keeps cards, detail views and video lists consistent. */
@@ -73,7 +74,8 @@ export async function enrichAnimals(db: Db, animals: AnimalDoc[], providedImport
         filename: item.filename,
         createdAt: item.createdAt,
         measuredAt: linkedWeight?.measuredAt ?? item.measuredAt ?? item.createdAt,
-        weight: linkedWeight?.weight ?? item.weight ?? null,
+        weight: linkedWeight?.weight ?? item.weight ?? weightHistory[0]?.weight ?? (animal.currentWeight > 0 ? animal.currentWeight : null),
+        weightInherited: !linkedWeight && item.weight == null,
         deltaKg: linkedWeight?.deltaKg ?? null,
       };
     }));
@@ -87,7 +89,8 @@ export async function enrichAnimals(db: Db, animals: AnimalDoc[], providedImport
       filename: ref.key.split("/").at(-1) ?? "Vídeo del animal",
       createdAt: ref.addedAt ?? null,
       measuredAt: ref.measuredAt ?? null,
-      weight: ref.weight ?? null,
+      weight: ref.weight ?? weightHistory[0]?.weight ?? (animal.currentWeight > 0 ? animal.currentWeight : null),
+      weightInherited: ref.weight == null,
       deltaKg: null,
     })));
     const videos = [...importedVideos, ...legacyVideos].filter((video) => video.url !== null).sort((left, right) =>

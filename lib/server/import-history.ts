@@ -24,6 +24,8 @@ export async function enrichImports(db: Db, imports: ImportDoc[]) {
     animal._id.toString(), buildWeightHistory(animal, weightsByAnimal.get(animal._id.toString()) ?? []),
   ]));
 
+  const animalById = new Map(animals.map((animal) => [animal._id.toString(), animal]));
+
   return Promise.all(imports.map(async (item) => {
     const history = item.animalId ? historyByAnimal.get(item.animalId.toString()) : undefined;
     const linked = history?.find((weight) => weight.importId === item._id.toString() || weight._id === item.weightId?.toString());
@@ -31,7 +33,8 @@ export async function enrichImports(db: Db, imports: ImportDoc[]) {
       ...serializeImport(item),
       weightId: linked?._id ?? item.weightId?.toString() ?? null,
       measuredAt: linked?.measuredAt ?? item.measuredAt ?? null,
-      weight: linked?.weight ?? item.weight ?? null,
+      weight: linked?.weight ?? item.weight ?? (item.animalId ? history?.[0]?.weight ?? animalById.get(item.animalId.toString())?.currentWeight : null) ?? null,
+      weightInherited: !linked && item.weight == null,
       deltaKg: linked?.deltaKg ?? null,
       previousWeight: linked?.previousWeight ?? null,
       previousMeasuredAt: linked?.previousMeasuredAt ?? null,

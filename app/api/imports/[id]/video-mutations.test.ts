@@ -22,7 +22,7 @@ vi.mock("@/lib/server/animal-updates", async (importOriginal) => ({
 }));
 
 import { POST as assignVideo, DELETE as detachVideo } from "./assign-animal/route";
-import { DELETE as deleteVideo } from "./route";
+import { PATCH as editVideoWeight, DELETE as deleteVideo } from "./route";
 
 const importId = new ObjectId();
 const animalId = new ObjectId();
@@ -207,6 +207,41 @@ describe("video assignment retries and deletion", () => {
     expect(response.status).toBe(500);
     expect(collections.imports.deleteOne).not.toHaveBeenCalled();
     expect(collections.animals.updateMany).not.toHaveBeenCalled();
+    expect(mocks.unlockVideoImport).toHaveBeenCalled();
+  });
+});
+
+
+describe("completing existing uploaded videos", () => {
+  function editRequest(weight: number = 500) { return new NextRequest(`http://localhost/api/imports/${importId}`, {
+    method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ weight, measuredAt: "2026-08-17" }),
+  }); }
+  it("adds a dated weight to an existing assigned video without reuploading or losing the animal", async () => {
+    item.animalId = animalId;
+    expect((await editVideoWeight(editRequest(), context())).status).toBe(200);
+    expect(item.animalId).toEqual(animalId);
+    expect(item.weight).toBe(500);
+    expect(item.weightId).toBeInstanceOf(ObjectId);
+    expect(weights.size).toBe(1);
+    expect([...weights.values()][0]).toMatchObject({ animalId, importId, weight: 500, measuredAt });
+    expect(mocks.recomputeAnimalCurrentWeight).toHaveBeenCalledWith(expect.anything(), animalId);
+    expect(mocks.deleteStoredFile).not.toHaveBeenCalled();
+  });
+  it("stores video and weight together while an uploaded video is still unassigned", async () => {
+    expect((await editVideoWeight(editRequest(), context())).status).toBe(200);
+    expect(item.weight).toBe(500); expect(item.measuredAt).toEqual(measuredAt);
+    expect(weights.size).toBe(0);
+  });
+  it("rejects invalid weights and read-only users without modifying the video", async () => {
+    expect((await editVideoWeight(editRequest(0), context())).status).toBe(400);
+    mocks.requireSessionUser.mockResolvedValue({ role: "institutional" });
+    expect((await editVideoWeight(editRequest(), context())).status).toBe(403);
+    expect(collections.imports.updateOne).not.toHaveBeenCalled();
+  });
+  it("does not overwrite or duplicate an existing linked historical weighing", async () => {
+    item.weightId = new ObjectId();
+    expect((await editVideoWeight(editRequest(), context())).status).toBe(409);
+    expect(collections.animal_weights.updateOne).not.toHaveBeenCalled();
     expect(mocks.unlockVideoImport).toHaveBeenCalled();
   });
 });

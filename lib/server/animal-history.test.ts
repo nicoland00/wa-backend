@@ -49,10 +49,11 @@ describe("shared animal and import projection", () => {
     expect(card.weightChangeKg).toBe(200);
   });
 
-  it("does not invent weight or comparison values for an old video with no weighing", async () => {
+  it("uses the current stored weight for an old video without inventing dates or comparisons", async () => {
     const { db } = database({ animal_weights: [], animals: [animal], imports: [video] });
     const [importView] = await enrichImports(db, [video]);
-    expect(importView.weight).toBeNull();
+    expect(importView.weight).toBe(300);
+    expect(importView.weightInherited).toBe(true);
     expect(importView.deltaKg).toBeNull();
     expect(importView.measuredAt).toBeNull();
   });
@@ -61,7 +62,7 @@ describe("shared animal and import projection", () => {
     const { db } = database({ animal_weights: [], animals: [animal], imports: [] });
     const [card] = await enrichAnimals(db, [{ ...animal, videoStorageKey: "old.mp4", videoStorageProvider: "local" }]);
     expect(card.videos).toHaveLength(1);
-    expect(card.videos[0]).toMatchObject({ _id: "legacy:local::old.mp4", importId: null, weight: null, measuredAt: null, createdAt: null, deltaKg: null });
+    expect(card.videos[0]).toMatchObject({ _id: "legacy:local::old.mp4", importId: null, weight: 300, measuredAt: null, createdAt: null, deltaKg: null });
   });
 
   it("deduplicates legacy arrays, primary pointer and the corresponding video import", async () => {

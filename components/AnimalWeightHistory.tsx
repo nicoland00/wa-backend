@@ -18,6 +18,7 @@ export type AnimalHistoryVideo = {
   createdAt?: string | null;
   measuredAt?: string | null;
   weight?: number | null;
+  weightInherited?: boolean;
   deltaKg?: number | null;
 };
 
@@ -105,7 +106,7 @@ export default function AnimalWeightHistory({ records = [], videos = [] }: { rec
               {record ? <>
                 <div className="mt-2 flex flex-wrap items-center gap-3"><span className="text-lg font-semibold tabular-nums text-slate-900">{formatWeight(record.weight)} <span className="text-xs font-normal text-slate-500">kg</span></span><WeightChange value={record.deltaKg} /></div>
                 {record.previousMeasuredAt ? <p className="mt-1 text-xs leading-relaxed text-slate-500">Anterior: {formatWeight(record.previousWeight!)} kg · {formatRecordDate(record.previousMeasuredAt)}</p> : null}
-              </> : <p className="mt-2 text-xs text-slate-500">Sin pesaje asociado a este vídeo.</p>}
+              </> : <p className="mt-2 text-xs text-slate-500">{video?.weight != null ? `${formatWeight(video.weight)} kg${video.weightInherited ? " · Peso actual del animal. Pendiente de confirmar para este vídeo." : " · Peso del vídeo"}` : "Sin pesaje asociado a este vídeo."}</p>}
               {video ? <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"><video src={video.url} controls preload="none" playsInline className="max-h-64 w-full bg-slate-950" aria-label={`Vídeo del animal del ${formatRecordDate(date)}`} /><p className="truncate px-3 py-2 text-xs text-slate-500">{video.filename || "Vídeo del animal"}{video.createdAt ? ` · Subido el ${formatRecordDate(video.createdAt)}` : ""}</p></div> : null}
             </li>
           ))}
