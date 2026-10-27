@@ -98,22 +98,20 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const lock = await lockVideoImport(db, importId);
   if (!lock) return NextResponse.json({ error: "El vídeo se está actualizando. Inténtalo de nuevo." }, { status: 409 });
   try {
-    // Complete a previously uploaded video without copying the file or altering
-    // unrelated historical measurements. Linked historical weights stay intact.
-    if (lock.item.weightId) return NextResponse.json({ error: "Este vídeo ya tiene un pesaje vinculado." }, { status: 409 });
+    // Correct the linked measurement in place; never create a second weighing for a typo.
     const now = new Date();
-    const weightId = lock.item.animalId ? new ObjectId() : null;
+    const weightId = lock.item.animalId ? lock.item.weightId ?? new ObjectId() : null;
     if (weightId && lock.item.animalId) {
-      await db.collection<AnimalWeightDoc>("animal_weights").updateOne({ _id: weightId }, { $setOnInsert: {
-        animalId: lock.item.animalId, importId, weight: parsed.data.weight, measuredAt: parsed.data.measuredAt,
-        source: "admin", syncStatus: "pending", syncError: null, ixorigueWeightId: null, createdAt: now, updatedAt: now,
+      await db.collection<AnimalWeightDoc>("animal_weights").updateOne({ _id: weightId }, { $set: { weight: parsed.data.weight, measuredAt: parsed.data.measuredAt, updatedAt: now, locallyCorrected: true }, $setOnInsert: {
+        animalId: lock.item.animalId, importId,
+        source: "admin", syncStatus: "pending", syncError: null, ixorigueWeightId: null, createdAt: now,
       } }, { upsert: true });
     }
     await db.collection<ImportDoc>("imports").updateOne({ _id: importId, mutationToken: lock.token }, { $set: {
       weight: parsed.data.weight, measuredAt: parsed.data.measuredAt, weightId, updatedAt: now,
     } });
     if (lock.item.animalId) await recomputeAnimalCurrentWeight(db, lock.item.animalId);
-    await logAudit({ actorUserId: user.userId, actorRole: user.role, action: "admin.video.weight.complete", target: { type: "import", id }, after: parsed.data });
+    await logAudit({ actorUserId: user.userId, actorRole: user.role, action: "admin.video.weight.correct", target: { type: "import", id }, before: { weight: lock.item.weight, measuredAt: lock.item.measuredAt }, after: parsed.data });
     return NextResponse.json({ ok: true });
   } finally { await unlockVideoImport(db, importId, lock.token); }
 }

@@ -74,8 +74,8 @@ beforeEach(() => {
   });
   collections.animal_weights.updateOne.mockImplementation(async (query, update) => {
     const key = query._id.toString();
-    if (weights.has(key)) return { upsertedCount: 0 };
-    weights.set(key, { _id: query._id, ...update.$setOnInsert });
+    if (weights.has(key)) { Object.assign(weights.get(key)!, update.$set ?? {}); return { upsertedCount: 0 }; }
+    weights.set(key, { _id: query._id, ...update.$setOnInsert, ...update.$set });
     return { upsertedCount: 1 };
   });
   collections.animal_weights.findOne.mockImplementation(async (query) => weights.get(query._id.toString()) ?? null);
@@ -238,10 +238,15 @@ describe("completing existing uploaded videos", () => {
     expect((await editVideoWeight(editRequest(), context())).status).toBe(403);
     expect(collections.imports.updateOne).not.toHaveBeenCalled();
   });
-  it("does not overwrite or duplicate an existing linked historical weighing", async () => {
-    item.weightId = new ObjectId();
-    expect((await editVideoWeight(editRequest(), context())).status).toBe(409);
-    expect(collections.animal_weights.updateOne).not.toHaveBeenCalled();
+  it("corrects an existing linked weighing in place without duplicating or changing its video", async () => {
+    item.animalId = animalId; item.weightId = new ObjectId();
+    const savedId = item.weightId;
+    weights.set(savedId.toString(), { _id: savedId, animalId, importId, weight: 300, measuredAt, ixorigueWeightId: "remote-weight" } as AnimalWeightDoc);
+    expect((await editVideoWeight(editRequest(450), context())).status).toBe(200);
+    expect(item.weightId).toEqual(savedId);
+    expect(weights.size).toBe(1);
+    expect(weights.get(savedId.toString())).toMatchObject({ weight: 450, locallyCorrected: true, ixorigueWeightId: "remote-weight" });
+    expect(mocks.recomputeAnimalCurrentWeight).toHaveBeenCalledWith(expect.anything(), animalId);
     expect(mocks.unlockVideoImport).toHaveBeenCalled();
   });
 });

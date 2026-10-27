@@ -159,13 +159,13 @@ function VideoRow({ item, animals, lots, canEdit, onAssign, onEditWeight, onUnas
           ) : item.animalId ? <p className="mt-2 text-xs text-amber-800">Vídeo anterior sin pesaje vinculado</p> : null}
         </div>
         {canEdit ? <div className="flex gap-2 sm:flex-col sm:items-stretch">
-          {!item.weightId ? <button type="button" disabled={busy} onClick={() => { setEditingWeight(true); setEditing(true); setDeleting(false); setError(""); }} className={secondaryClass}>Editar peso del vídeo</button> : null}
+          {<button type="button" disabled={busy} onClick={() => { setEditingWeight(true); setEditing(true); setDeleting(false); setError(""); }} className={secondaryClass}>Editar pesaje</button>}
           <button type="button" disabled={busy} onClick={() => { setEditingWeight(false); setEditing(!editing); setDeleting(false); setError(""); }} aria-expanded={editing} className={item.animalId ? secondaryClass : buttonClass}>{editing ? "Cerrar" : item.animalId ? "Añadir a otro animal" : "Asignar y pesar"}</button>
           <button type="button" disabled={busy} onClick={() => { setDeleting(!deleting); setEditing(false); setError(""); }} aria-expanded={deleting} className="rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">Eliminar vídeo</button>
         </div> : null}
       </div>
       {editing ? <form onSubmit={(event) => void submitAssignment(event)} className="border-t border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-        <p className="text-sm font-medium text-slate-800">{editingWeight ? "Completar el peso del vídeo subido" : item.animalId ? "Añadir este vídeo y peso a otro animal" : "Registrar vídeo y pesaje"}</p>
+        <p className="text-sm font-medium text-slate-800">{editingWeight ? "Corregir el peso o la fecha del vídeo" : item.animalId ? "Añadir este vídeo y peso a otro animal" : "Registrar vídeo y pesaje"}</p>
         <p className="mt-1 text-xs leading-5 text-slate-500">La fecha debe corresponder al día del pesaje. Se comparará con el registro anterior del animal.{item.animalId && !editingWeight ? " El registro original se conserva en el otro animal, aunque pertenezca a otro lote." : ""}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-[2fr_1fr_1fr]">
           <label className="grid gap-1.5 text-xs font-medium text-slate-600">Animal
@@ -350,7 +350,7 @@ export default function AdminImportsPage() {
 
   async function handleEditWeight(id: string, weight: number, measuredAt: string) {
     await readJson(`/api/imports/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ weight, measuredAt }) });
-    setNotice({ text: "Peso vinculado al vídeo. El historial del animal está actualizado." });
+    setNotice({ text: "Pesaje corregido. El historial y las comparaciones del animal están actualizados." });
     setRefreshKey((key) => key + 1);
   }
 

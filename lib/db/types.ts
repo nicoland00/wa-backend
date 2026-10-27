@@ -109,6 +109,7 @@ export type AnimalDoc = {
 };
 
 export type AnimalWeightDoc = {
+  locallyCorrected?: boolean;
   _id: ObjectId;
   animalId: ObjectId;
   importId?: ObjectId | null;

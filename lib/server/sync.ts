@@ -581,6 +581,11 @@ async function preserveRemoteAnimalWeight(db: Awaited<ReturnType<typeof getDb>>,
     const filter = remoteId
       ? { animalId, ixorigueWeightId: remoteId }
       : { animalId, weight, measuredAt };
+    const stored = await db.collection<AnimalWeightDoc>("animal_weights").findOne(filter);
+    if (stored?.locallyCorrected) {
+      await recomputeAnimalCurrentWeight(db, animalId);
+      return;
+    }
     await db.collection<AnimalWeightDoc>("animal_weights").updateOne(
       filter,
       { $set: { weight, measuredAt, syncStatus: "synced", syncError: null, updatedAt: now },
