@@ -189,11 +189,11 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
       marker.addListener("click", () => {
         if (!infoWindowRef.current) return;
         infoWindowRef.current.setContent(`
-          <div style="font-family:Poppins,sans-serif;padding:4px 2px;min-width:140px">
+          <div style="font-family:Segoe UI,sans-serif;padding:4px 2px;min-width:140px">
             <p style="font-weight:600;margin:0 0 4px">${animal.earTagNumber}</p>
-            <p style="margin:0;color:#64748b;font-size:12px">Lot: ${animal.lotName ?? "—"}</p>
-            <p style="margin:0;color:#64748b;font-size:12px">Breed: ${animal.breed ?? "—"}</p>
-            <p style="margin:0;color:#64748b;font-size:12px">Weight: ${animal.currentWeight != null ? `${animal.currentWeight} kg` : "—"}</p>
+            <p style="margin:0;color:#64748b;font-size:12px">Lote: ${animal.lotName ?? "—"}</p>
+            <p style="margin:0;color:#64748b;font-size:12px">Raza: ${animal.breed ?? "—"}</p>
+            <p style="margin:0;color:#64748b;font-size:12px">Peso: ${animal.currentWeight != null ? `${animal.currentWeight} kg` : "—"}</p>
           </div>
         `);
         infoWindowRef.current.open(map, marker);
@@ -207,10 +207,10 @@ export default function MapView({ lots, animals = [], selectedLotId, onSelectLot
   const visibleCount = selectedLotId ? animals.filter((a) => a.lotId === selectedLotId).length : animals.length;
 
   return (
-    <div className="relative h-[520px] w-full overflow-hidden rounded-2xl shadow-sm">
+    <div className="relative h-[360px] w-full overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
-      <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-white/90 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm">
-        {selectedLotId ? `${visibleCount} animals in lot` : `${visibleCount} animals`}
+      <div className="pointer-events-none absolute left-4 top-4 rounded-md bg-white/95 px-3 py-2 text-xs font-medium text-slate-700">
+        {selectedLotId ? `${visibleCount} animales en el lote` : `${visibleCount} animales`}
       </div>
     </div>
   );

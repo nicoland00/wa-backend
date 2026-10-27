@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
 import { serializeAnimalWeight } from "@/lib/server/serializers";
 import { syncAnimalWeight } from "@/lib/server/sync";
+import { recomputeAnimalCurrentWeight } from "@/lib/server/animal-updates";
 import { objectIdSchema } from "@/lib/validators/common";
 import { animalWeightCreateSchema } from "@/lib/validators/animals";
 import type { AnimalDoc, AnimalWeightDoc, RanchDoc } from "@/lib/db/types";
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   };
 
   const result = await db.collection<AnimalWeightDoc>("animal_weights").insertOne(weightDoc as AnimalWeightDoc);
-  await db.collection<AnimalDoc>("animals").updateOne({ _id: animal._id }, { $set: { currentWeight: weightDoc.weight, updatedAt: now } });
+  await recomputeAnimalCurrentWeight(db, animal._id);
   const created = await db.collection<AnimalWeightDoc>("animal_weights").findOne({ _id: result.insertedId });
 
   await logAudit({
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     after: created,
   });
 
-  if (created) {
+  if (created && ranch.ixorigueRanchId && animal.ixorigueAnimalId) {
     await syncAnimalWeight(created, animal, ranch);
   }
 

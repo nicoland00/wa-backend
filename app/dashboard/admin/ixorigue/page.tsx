@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -104,40 +103,39 @@ export default function AdminIxoriguePage() {
   }
 
   if (status === "loading") {
-    return <main className="p-6 text-sm text-slate-600">Loading...</main>;
+    return <main className="p-6 text-sm text-slate-600">Cargando…</main>;
   }
   if (!canView) {
-    return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+    return <main className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</main>;
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-5xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Ixorigue Credential Admin</h1>
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configuración de Ixorigue</h1>
           <p className="mt-1 text-sm text-slate-600">
             Store and test the Ixorigue refresh token without editing deployment environment variables every time it rotates.
           </p>
           {!canManage ? (
-            <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Institutional users can review credential health here, but only admins can save or test credentials.
             </p>
           ) : null}
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
         </section>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
           <h2 className="text-base font-semibold text-slate-900">Current status</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
               <p><span className="font-medium">Active source:</span> {credentialStatus?.source ?? "loading"}</p>
               <p><span className="font-medium">Stored token:</span> {credentialStatus?.maskedRefreshToken ?? "none"}</p>
               <p><span className="font-medium">Client ID:</span> {credentialStatus?.clientId ?? "unknown"}</p>
               <p><span className="font-medium">Token URL:</span> {credentialStatus?.tokenUrl ?? "unknown"}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
               <p><span className="font-medium">Updated:</span> {credentialStatus?.updatedAt ? new Date(credentialStatus.updatedAt).toLocaleString() : "never"}</p>
               <p><span className="font-medium">Last refresh attempt:</span> {credentialStatus?.lastRefreshAttemptAt ? new Date(credentialStatus.lastRefreshAttemptAt).toLocaleString() : "never"}</p>
               <p><span className="font-medium">Last refresh success:</span> {credentialStatus?.lastRefreshSucceededAt ? new Date(credentialStatus.lastRefreshSucceededAt).toLocaleString() : "never"}</p>
@@ -146,7 +144,7 @@ export default function AdminIxoriguePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
           <h2 className="text-base font-semibold text-slate-900">Update refresh token</h2>
           <p className="mt-1 text-sm text-slate-600">
             The token is stored encrypted in MongoDB. Leave client ID or token URL blank to infer them from the refresh token and environment defaults.
@@ -181,7 +179,7 @@ export default function AdminIxoriguePage() {
                 type="button"
                 onClick={() => void saveCredential()}
                 disabled={!canManage || !refreshToken.trim() || busy !== null}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60"
+                className="rounded-lg bg-[#31574b] px-4 py-2 text-sm text-white hover:bg-[#27483e] disabled:opacity-60"
               >
                 {busy === "save" ? "Saving..." : "Save refresh token"}
               </button>

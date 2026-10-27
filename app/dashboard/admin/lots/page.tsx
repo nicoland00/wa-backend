@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -122,18 +121,17 @@ export default function AdminLotsPage() {
   }
 
   if (status === "loading") {
-    return <main className="p-6 text-sm text-slate-600">Loading...</main>;
+    return <main className="p-6 text-sm text-slate-600">Cargando…</main>;
   }
   if (!canView) {
-    return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+    return <main className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</main>;
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Lots</h1>
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Lotes</h1>
           <p className="mt-1 text-sm text-slate-600">Browse and manage lots for each ranch.</p>
           <div className="mt-4 space-y-3">
             <select value={ranchId} onChange={(event) => setRanchId(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -146,14 +144,14 @@ export default function AdminLotsPage() {
                 <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lot name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <textarea value={geometry} onChange={(event) => setGeometry(event.target.value)} placeholder='Optional GeoJSON polygon' className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void createLot()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">Create lot</button>
+                  <button type="button" onClick={() => void createLot()} className="rounded-lg bg-[#31574b] px-4 py-2 text-sm text-white hover:bg-[#27483e]">Create lot</button>
                   <button type="button" onClick={() => void syncRemoteLots()} disabled={!ranchId || syncing} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
                     {syncing ? "Syncing..." : "Pull remote lots"}
                   </button>
                 </div>
               </>
             ) : (
-              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 Institutional users can review lots here, but lot creation and sync actions remain admin-only.
               </p>
             )}
@@ -161,7 +159,7 @@ export default function AdminLotsPage() {
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
         </section>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>

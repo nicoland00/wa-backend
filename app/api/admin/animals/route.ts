@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { enrichAnimals } from "@/lib/server/animal-history";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
 import { uploadFormFile } from "@/lib/server/media";
 import { serializeAnimal } from "@/lib/server/serializers";
+import { createAdminWeightRecord, createAnimalVideoImport } from "@/lib/server/animal-records";
+import { recomputeAnimalCurrentWeight } from "@/lib/server/animal-updates";
 import { syncAnimalCreate, syncLotCreate } from "@/lib/server/sync";
 import { animalBaseSchema } from "@/lib/validators/animals";
 import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
   const db = await getDb();
   const animals = await db.collection<AnimalDoc>("animals").find(filter).sort({ createdAt: -1 }).toArray();
-  return NextResponse.json({ animals: animals.map(serializeAnimal) });
+  return NextResponse.json({ animals: await enrichAnimals(db, animals) });
 }
 
 export async function POST(request: NextRequest) {
@@ -65,6 +68,20 @@ export async function POST(request: NextRequest) {
 
     const photoFile = formData.get("photo");
     const videoFile = formData.get("video");
+    const hasVideo = videoFile instanceof File && videoFile.size > 0;
+    const measuredAtInput = formData.get("measuredAt");
+    const measuredAt = typeof measuredAtInput === "string" && measuredAtInput.trim()
+      ? new Date(measuredAtInput)
+      : null;
+    if (measuredAt && !Number.isFinite(measuredAt.getTime())) {
+      return NextResponse.json({ error: "La fecha del pesaje no es válida." }, { status: 400 });
+    }
+    if (hasVideo && (!parsed.data.initialWeight || !measuredAt)) {
+      return NextResponse.json({ error: "Añade un peso positivo y la fecha del pesaje para subir el vídeo." }, { status: 400 });
+    }
+    if (hasVideo && videoFile.type && !videoFile.type.startsWith("video/")) {
+      return NextResponse.json({ error: "El archivo debe ser un vídeo." }, { status: 400 });
+    }
 
     const db = await getDb();
     const lot = await db.collection<LotDoc>("lots").findOne({ _id: new ObjectId(parsed.data.lotId) });
@@ -143,6 +160,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create animal" }, { status: 500 });
     }
 
+    // Save the local history before syncing. syncAnimalCreate reuses this initial
+    // record, preserving the actual measurement date even if upstream sync fails.
+    const initialWeight = created.initialWeight > 0
+      ? await createAdminWeightRecord(db, created._id, created.initialWeight, measuredAt ?? now)
+      : null;
+    if (video && hasVideo && initialWeight) {
+      await createAnimalVideoImport(db, created, video, videoFile, initialWeight);
+    }
+
     await logAudit({
       actorUserId: actor.userId,
       actorRole: actor.role,
@@ -154,6 +180,7 @@ export async function POST(request: NextRequest) {
     await syncAnimalCreate(created, ranch, syncedLot, {
       selfieFile: photoFile instanceof File && photoFile.size > 0 ? photoFile : null,
     });
+    await recomputeAnimalCurrentWeight(db, created._id);
     const refreshed = await db.collection<AnimalDoc>("animals").findOne({ _id: created._id });
     if (!refreshed) {
       return NextResponse.json({ error: "Animal sync result missing" }, { status: 500 });
@@ -164,7 +191,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    return NextResponse.json({ animal: serializeAnimal(refreshed) }, { status: 201 });
+    return NextResponse.json({ animal: (await enrichAnimals(db, [refreshed]))[0] }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error creating animal.";
     return NextResponse.json({ error: message }, { status: 500 });

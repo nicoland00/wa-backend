@@ -3,8 +3,8 @@ import SessionProvider from "@/components/SessionProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Pastora Dashboard",
-  description: "Agricultural management dashboard",
+  title: "Pastora · Gestión del ganado",
+  description: "Animales, pesajes y vídeos de tu finca en un mismo lugar.",
 };
 
 export default function RootLayout({
@@ -13,12 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
+    <html lang="es">
       <body className="antialiased">
         <SessionProvider>{children}</SessionProvider>
       </body>

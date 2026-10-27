@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -216,8 +215,8 @@ export default function DeviceHealthPage() {
     if (selectedRanchId) void loadData(selectedRanchId, mode, endDate);
   }, [selectedRanchId, mode, endDate, loadData]);
 
-  if (status === "loading") return <main className="p-6 text-sm text-slate-600">Loading...</main>;
-  if (!canView) return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+  if (status === "loading") return <main className="p-6 text-sm text-slate-600">Cargando…</main>;
+  if (!canView) return <main className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</main>;
 
   const allAnimals = data?.lots.flatMap((l) => l.animals) ?? [];
   const withDevice = allAnimals.filter((a) => a.hasDevice && a.overallExpected > 0);
@@ -233,19 +232,18 @@ export default function DeviceHealthPage() {
       : `${startDate.slice(5)} – ${endDate.slice(5)}`;
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-4 sm:p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-800">← Dashboard</Link>
 
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Device Health</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Dispositivos</h1>
           <p className="text-sm text-slate-500">Reporting timeline per device — real GPS history from Ixorigue (expected every 30 min).</p>
         </div>
 
         {/* Controls — stack on mobile, never overflow */}
         <div className="space-y-2">
           <select
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm sm:w-auto"
+            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-none sm:w-auto"
             value={selectedRanchId}
             onChange={(e) => setSelectedRanchId(e.target.value)}
           >
@@ -295,21 +293,21 @@ export default function DeviceHealthPage() {
         {/* Fleet summary */}
         {data && !loading && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <p className="text-xs text-slate-500">Fleet health</p>
               <p className={`mt-1 text-2xl font-bold ${fleetScore !== null ? scoreColor(fleetScore) : "text-slate-400"}`}>
                 {fleetScore !== null ? `${fleetScore}%` : "—"}
               </p>
             </div>
-            <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <p className="text-xs text-slate-500">Devices tracked</p>
               <p className="mt-1 text-2xl font-bold text-slate-800">{withDevice.length}</p>
             </div>
-            <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <p className="text-xs text-slate-500">Reporting well (≥75%)</p>
               <p className="mt-1 text-2xl font-bold text-emerald-600">{withDevice.filter((a) => a.overallPct >= 75).length}</p>
             </div>
-            <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <p className="text-xs text-slate-500">Critical (&lt;25%)</p>
               <p className="mt-1 text-2xl font-bold text-red-500">{withDevice.filter((a) => a.overallPct < 25).length}</p>
             </div>
@@ -346,7 +344,7 @@ export default function DeviceHealthPage() {
           const isExpanded = expandedLots.has(lot.id);
 
           return (
-            <section key={lot.id} className="rounded-2xl bg-white shadow-sm overflow-hidden">
+            <section key={lot.id} className="rounded-lg border border-[#e1e5e1] bg-white shadow-none overflow-hidden">
               <button
                 className="flex w-full items-center justify-between gap-2 px-4 py-4 text-left hover:bg-slate-50 transition sm:px-5"
                 onClick={() => {
@@ -423,7 +421,7 @@ export default function DeviceHealthPage() {
         })}
 
         {!loading && data && data.lots.length === 0 && (
-          <div className="rounded-2xl bg-white p-12 text-center text-sm text-slate-400 shadow-sm">
+          <div className="rounded-lg border border-[#e1e5e1] bg-white p-12 text-center text-sm text-slate-400 shadow-none">
             No animals found for this ranch.
           </div>
         )}

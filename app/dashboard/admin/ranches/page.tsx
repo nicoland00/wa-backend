@@ -259,10 +259,10 @@ export default function AdminRanchesPage() {
   }
 
   if (status === "loading") {
-    return <main className="p-6 text-sm text-slate-600">Loading...</main>;
+    return <main className="p-6 text-sm text-slate-600">Cargando…</main>;
   }
   if (!canView) {
-    return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+    return <main className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</main>;
   }
 
   const visibleLots = details?.lots ?? [];
@@ -294,12 +294,11 @@ export default function AdminRanchesPage() {
     }));
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Ranch Explorer</h1>
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Fincas</h1>
           <p className="mt-1 text-sm text-slate-600">Navigate from retail users to ranches, then lots, then animals.</p>
           {canManage ? (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -313,28 +312,28 @@ export default function AdminRanchesPage() {
                   <option key={ranch.id} value={ranch.id}>{ranch.name ?? ranch.code ?? ranch.id}</option>
                 ))}
               </select>
-              <button type="button" onClick={() => void assignRanch()} disabled={!ownerUserId || !ixorigueRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">
+              <button type="button" onClick={() => void assignRanch()} disabled={!ownerUserId || !ixorigueRanchId || busyAction !== null} className="rounded-lg bg-[#31574b] px-4 py-2 text-sm text-white hover:bg-[#27483e] disabled:opacity-60">
                 {busyAction === "assign" ? "Assigning..." : "+ Assign ranch"}
               </button>
             </div>
           ) : (
-            <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Institutional users can review ranch ownership and sync state here, but assignment and sync actions remain admin-only.
             </p>
           )}
           {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[320px,1fr]">
+        <section className="grid gap-4 2xl:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="space-y-4">
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
+            <section className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-slate-900">Users</h2>
                 <span className="text-xs text-slate-500">{users.length}</span>
               </div>
               <div className="mt-3 space-y-2">
                 {users.map((user) => (
-                  <button key={user._id} type="button" onClick={() => setSelectedUserId(user._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selectedUserId === user._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <button key={user._id} type="button" onClick={() => setSelectedUserId(user._id)} className={`w-full rounded-md border px-3 py-3 text-left text-sm ${selectedUserId === user._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium text-slate-900">{user.name ?? user.email}</p>
@@ -349,14 +348,14 @@ export default function AdminRanchesPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
+            <section className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-slate-900">Ranches</h2>
                 <span className="text-xs text-slate-500">{filteredRanches.length}</span>
               </div>
               <div className="mt-3 space-y-2">
                 {filteredRanches.length ? filteredRanches.map((ranch) => (
-                  <button key={ranch._id} type="button" onClick={() => setSelectedRanchId(ranch._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${resolvedSelectedRanchId === ranch._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <button key={ranch._id} type="button" onClick={() => setSelectedRanchId(ranch._id)} className={`w-full rounded-md border px-3 py-3 text-left text-sm ${resolvedSelectedRanchId === ranch._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                     <p className="font-medium text-slate-900">{ranch.name}</p>
                     <p className="text-slate-500">{ranch.lotCount} lots · {ranch.animalCount} animals</p>
                     <p className="mt-1 text-xs text-slate-500">{ranch.syncStatus}{ranch.syncError ? ` · ${ranch.syncError}` : ""}</p>
@@ -367,7 +366,7 @@ export default function AdminRanchesPage() {
           </aside>
 
           <div className="space-y-4">
-            <section className="rounded-2xl bg-white p-4 shadow-sm">
+            <section className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{details?.ranch.name ?? "Select a ranch"}</h2>
@@ -386,7 +385,7 @@ export default function AdminRanchesPage() {
                       </button>
                       <button type="button" onClick={() => void runSync("sync-lots")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync lots</button>
                       <button type="button" onClick={() => void runSync("sync-animals")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">Sync animals</button>
-                      <button type="button" onClick={() => void runSync("sync-remote")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-60">Sync all</button>
+                      <button type="button" onClick={() => void runSync("sync-remote")} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg bg-[#31574b] px-3 py-2 text-sm text-white hover:bg-[#27483e] disabled:opacity-60">Sync all</button>
                       <button type="button" onClick={() => void deleteRanch()} disabled={!resolvedSelectedRanchId || busyAction !== null} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60">
                         {busyAction === "delete" ? "Deleting..." : "Delete ranch"}
                       </button>
@@ -405,8 +404,8 @@ export default function AdminRanchesPage() {
               ) : null}
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-[280px,1fr]">
-              <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <section className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+              <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
                 <div className="flex items-center justify-between">
                   <h2 className="text-base font-semibold text-slate-900">Lots</h2>
                   {resolvedSelectedRanchId && canManage ? (
@@ -414,12 +413,12 @@ export default function AdminRanchesPage() {
                   ) : null}
                 </div>
                 <div className="mt-3 space-y-2">
-                  <button type="button" onClick={() => setSelectedLotId("")} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selectedLotId === "" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <button type="button" onClick={() => setSelectedLotId("")} className={`w-full rounded-md border px-3 py-3 text-left text-sm ${selectedLotId === "" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                     <p className="font-medium text-slate-900">All lots</p>
                     <p className="text-slate-500">{details?.animals.length ?? 0} animals in ranch</p>
                   </button>
                   {visibleLots.map((lot) => (
-                    <button key={lot._id} type="button" onClick={() => setSelectedLotId(lot._id)} className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selectedLotId === lot._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                    <button key={lot._id} type="button" onClick={() => setSelectedLotId(lot._id)} className={`w-full rounded-md border px-3 py-3 text-left text-sm ${selectedLotId === lot._id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                       <p className="font-medium text-slate-900">{lot.name}</p>
                       <p className="text-slate-500">{lot.animalCount ?? details?.animals.filter((animal) => animal.lotId === lot._id).length ?? 0} animals</p>
                     </button>
@@ -427,7 +426,7 @@ export default function AdminRanchesPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <div className="rounded-lg border border-[#e1e5e1] bg-white p-4 shadow-none">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-slate-900">{selectedLot ? `Animals in ${selectedLot.name}` : "Animals in ranch"}</h2>

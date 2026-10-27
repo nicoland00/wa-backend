@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { enrichAnimals } from "@/lib/server/animal-history";
+import { enrichImports } from "@/lib/server/import-history";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { requireSessionUser } from "@/lib/server/auth";
-import { serializeAnimal, serializeImport, serializeLot } from "@/lib/server/serializers";
+import { serializeLot } from "@/lib/server/serializers";
 import { objectIdSchema } from "@/lib/validators/common";
 import type { AnimalDoc, ImportDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
@@ -39,7 +41,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 
   return NextResponse.json({
     lot: serializeLot(lot),
-    animals: animals.map(serializeAnimal),
-    imports: imports.map(serializeImport),
+    animals: await enrichAnimals(db, animals, imports),
+    imports: await enrichImports(db, imports),
   });
 }

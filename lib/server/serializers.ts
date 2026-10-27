@@ -43,7 +43,7 @@ export function serializeAnimal(animal: AnimalDoc) {
     _id: animal._id.toString(),
     ranchId: (animal.ranchId ?? animal.farmId)?.toString(),
     lotId: animal.lotId.toString(),
-    createdByAdminUserId: animal.createdByAdminUserId.toString(),
+    createdByAdminUserId: animal.createdByAdminUserId?.toString() ?? null,
   };
 }
 
@@ -52,17 +52,22 @@ export function serializeAnimalWeight(weight: AnimalWeightDoc) {
     ...weight,
     _id: weight._id.toString(),
     animalId: weight.animalId.toString(),
+    importId: weight.importId?.toString() ?? null,
     ixorigueWeightId: weight.ixorigueWeightId ?? null,
   };
 }
 
 export function serializeImport(item: ImportDoc) {
+  const { mutationToken: _mutationToken, mutationStartedAt: _mutationStartedAt, ...data } = item;
   return {
-    ...item,
+    ...data,
     _id: item._id.toString(),
     ranchId: (item.ranchId ?? item.farmId)?.toString(),
     lotId: item.lotId ? item.lotId.toString() : null,
     animalId: item.animalId ? item.animalId.toString() : null,
+    weightId: item.weightId?.toString() ?? null,
+    weight: item.weight ?? null,
+    measuredAt: item.measuredAt ?? null,
   };
 }
 

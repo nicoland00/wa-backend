@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { enrichAnimals } from "@/lib/server/animal-history";
 import { canViewAdminScreens } from "@/lib/permissions";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 import { logAudit } from "@/lib/server/audit";
 import { uploadFormFile } from "@/lib/server/media";
-import { serializeAnimal } from "@/lib/server/serializers";
+import { createAdminWeightRecord, createAnimalVideoImport } from "@/lib/server/animal-records";
+import { recomputeAnimalCurrentWeight } from "@/lib/server/animal-updates";
 import { deleteAnimal } from "@/lib/ixorigue/client";
-import { syncAnimalUpdate } from "@/lib/server/sync";
+import { syncAnimalUpdate, syncAnimalWeight } from "@/lib/server/sync";
 import { objectIdSchema } from "@/lib/validators/common";
 import { animalPatchSchema } from "@/lib/validators/animals";
-import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
+import type { AnimalDoc, AnimalWeightDoc, LotDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   const actor = await requireSessionUser();
@@ -33,146 +35,140 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
     return NextResponse.json({ error: "Animal not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ animal: serializeAnimal(animal) });
+  return NextResponse.json({ animal: (await enrichAnimals(db, [animal]))[0] });
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const actor = await requireSessionUser();
-  if (!actor) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!isAdmin(actor)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!actor) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdmin(actor)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const params = await context.params;
   const parsedId = objectIdSchema.safeParse(params.id);
-  if (!parsedId.success) {
-    return NextResponse.json({ error: "Invalid animal id" }, { status: 400 });
-  }
+  if (!parsedId.success) return NextResponse.json({ error: "Invalid animal id" }, { status: 400 });
 
   const db = await getDb();
   const _id = new ObjectId(parsedId.data);
   const before = await db.collection<AnimalDoc>("animals").findOne({ _id });
-  if (!before) {
-    return NextResponse.json({ error: "Animal not found" }, { status: 404 });
-  }
+  if (!before) return NextResponse.json({ error: "Animal not found" }, { status: 404 });
 
   const contentType = request.headers.get("content-type") || "";
   let updateInput: Record<string, unknown> = {};
-  let mediaPatch: Partial<AnimalDoc> = {};
-  let selfieFile: File | null = null;
+  let photoFile: File | null = null;
+  let videoFile: File | null = null;
   let deleteSelfie = false;
-  let uploadedPhotoRef: import("@/lib/db/types").StoredMediaRef | null = null;
-  let uploadedVideoRef: import("@/lib/db/types").StoredMediaRef | null = null;
-
   if (contentType.includes("multipart/form-data")) {
     const formData = await request.formData();
-    updateInput = {
-      specie: formData.get("specie") || undefined,
-      name: formData.get("name") || undefined,
-      sex: formData.get("sex") || undefined,
-      breed: formData.get("breed") || undefined,
-      color: formData.get("color") || undefined,
-      brandNumber: formData.get("brandNumber") || undefined,
-      earTagNumber: formData.get("earTagNumber") || undefined,
-      deviceId: formData.get("deviceId") || undefined,
-      birthDate: formData.get("birthDate") || undefined,
-      dateOfPurchase: formData.get("dateOfPurchase") || undefined,
-      registerReason: formData.get("registerReason") || undefined,
-      initialWeight: formData.get("initialWeight") || undefined,
-      currentWeight: formData.get("currentWeight") || undefined,
-      lifeStatus: formData.get("lifeStatus") || undefined,
-      lotId: formData.get("lotId") || undefined,
-      ixorigueAnimalId: formData.get("ixorigueAnimalId") || undefined,
-      syncStatus: formData.get("syncStatus") || undefined,
-      syncError: formData.get("syncError") || undefined,
-    };
-    deleteSelfie = formData.get("deleteSelfie") === "true";
-
+    for (const key of ["specie", "name", "sex", "breed", "color", "brandNumber", "earTagNumber", "deviceId", "birthDate", "dateOfPurchase", "registerReason", "initialWeight", "currentWeight", "lifeStatus", "lotId", "ixorigueAnimalId", "syncStatus", "syncError", "measuredAt"]) {
+      const value = formData.get(key);
+      if (typeof value === "string" && value.trim()) updateInput[key] = value;
+    }
     const photo = formData.get("photo");
     const video = formData.get("video");
-    const [uploadedPhoto, uploadedVideo] = await Promise.all([
-      photo instanceof File && photo.size > 0 ? uploadFormFile(photo) : Promise.resolve(null),
-      video instanceof File && video.size > 0 ? uploadFormFile(video) : Promise.resolve(null),
-    ]);
-    selfieFile = photo instanceof File && photo.size > 0 ? photo : null;
-
-    if (uploadedPhoto) {
-      mediaPatch = {
-        ...mediaPatch,
-        photoStorageKey: uploadedPhoto.key,
-        photoStorageProvider: uploadedPhoto.provider,
-        photoStorageBucket: uploadedPhoto.bucket ?? null,
-        photoStorageUrl: uploadedPhoto.url ?? null,
-      };
-      uploadedPhotoRef = { provider: uploadedPhoto.provider, key: uploadedPhoto.key, ...(uploadedPhoto.bucket ? { bucket: uploadedPhoto.bucket } : {}), ...(uploadedPhoto.url ? { url: uploadedPhoto.url } : {}) };
-    }
-
-    if (uploadedVideo) {
-      mediaPatch = {
-        ...mediaPatch,
-        videoStorageKey: uploadedVideo.key,
-        videoStorageProvider: uploadedVideo.provider,
-        videoStorageBucket: uploadedVideo.bucket ?? null,
-        videoStorageUrl: uploadedVideo.url ?? null,
-      };
-      uploadedVideoRef = { provider: uploadedVideo.provider, key: uploadedVideo.key, ...(uploadedVideo.bucket ? { bucket: uploadedVideo.bucket } : {}), ...(uploadedVideo.url ? { url: uploadedVideo.url } : {}) };
-    }
+    photoFile = photo instanceof File && photo.size > 0 ? photo : null;
+    videoFile = video instanceof File && video.size > 0 ? video : null;
+    deleteSelfie = formData.get("deleteSelfie") === "true";
   } else if (contentType.includes("application/json")) {
-    updateInput = await request.json();
+    try { updateInput = await request.json(); }
+    catch { return NextResponse.json({ error: "Invalid payload" }, { status: 400 }); }
+  } else {
+    return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
   }
 
   const parsed = animalPatchSchema.safeParse(updateInput);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid payload" }, { status: 400 });
   }
+  const measuredAtInput = updateInput.measuredAt;
+  const measuredAt = typeof measuredAtInput === "string" && measuredAtInput.trim()
+    ? new Date(measuredAtInput)
+    : null;
+  if ((measuredAt && !Number.isFinite(measuredAt.getTime())) || (parsed.data.currentWeight !== undefined && !measuredAt)) {
+    return NextResponse.json({ error: "Añade una fecha válida para el pesaje." }, { status: 400 });
+  }
+  if (videoFile && (parsed.data.currentWeight === undefined || !measuredAt)) {
+    return NextResponse.json({ error: "Añade un peso positivo y la fecha del pesaje para subir el vídeo." }, { status: 400 });
+  }
+  if (videoFile?.type && !videoFile.type.startsWith("video/")) {
+    return NextResponse.json({ error: "El archivo debe ser un vídeo." }, { status: 400 });
+  }
 
   const nextLotId = parsed.data.lotId ? new ObjectId(parsed.data.lotId) : before.lotId;
   const lot = await db.collection<LotDoc>("lots").findOne({ _id: nextLotId });
-  if (!lot) {
-    return NextResponse.json({ error: "Lot not found" }, { status: 404 });
-  }
+  if (!lot) return NextResponse.json({ error: "Lot not found" }, { status: 404 });
   const ranch = await db.collection<RanchDoc>("ranches").findOne({ _id: lot.ranchId });
-  if (!ranch) {
-    return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
+  if (!ranch) return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
+
+  // Validate the complete update before writing files or modifying history.
+  const [uploadedPhoto, uploadedVideo] = await Promise.all([
+    photoFile ? uploadFormFile(photoFile) : Promise.resolve(null),
+    videoFile ? uploadFormFile(videoFile) : Promise.resolve(null),
+  ]);
+  const now = new Date();
+  const mediaPatch: Partial<AnimalDoc> = {};
+  if (uploadedPhoto) {
+    Object.assign(mediaPatch, {
+      photoStorageKey: uploadedPhoto.key,
+      photoStorageProvider: uploadedPhoto.provider,
+      photoStorageBucket: uploadedPhoto.bucket ?? null,
+      photoStorageUrl: uploadedPhoto.url ?? null,
+    });
   }
-
-  const arrayPush: Record<string, unknown> = {};
-  if (uploadedPhotoRef) arrayPush.photos = uploadedPhotoRef;
-  if (uploadedVideoRef) arrayPush.videos = { ...uploadedVideoRef, addedAt: new Date() };
-
+  if (uploadedVideo) {
+    Object.assign(mediaPatch, {
+      videoStorageKey: uploadedVideo.key,
+      videoStorageProvider: uploadedVideo.provider,
+      videoStorageBucket: uploadedVideo.bucket ?? null,
+      videoStorageUrl: uploadedVideo.url ?? null,
+    });
+  }
+  const { currentWeight, ...animalPatch } = parsed.data;
   await db.collection<AnimalDoc>("animals").updateOne(
     { _id },
     {
       $set: {
-        ...parsed.data,
+        ...animalPatch,
         ...mediaPatch,
         lotId: nextLotId,
         ranchId: ranch._id,
         farmId: ranch._id,
-        updatedAt: new Date(),
+        updatedAt: now,
       },
-      ...(Object.keys(arrayPush).length > 0 ? { $addToSet: arrayPush } : {}),
+      ...(uploadedPhoto ? { $addToSet: { photos: uploadedPhoto } } : {}),
     },
   );
-
+  const weight = currentWeight !== undefined && measuredAt
+    ? await createAdminWeightRecord(db, _id, currentWeight, measuredAt)
+    : null;
   const after = await db.collection<AnimalDoc>("animals").findOne({ _id });
+  if (after && uploadedVideo && videoFile && weight) {
+    await createAnimalVideoImport(db, after, uploadedVideo, videoFile, weight);
+  }
+  if (weight) await recomputeAnimalCurrentWeight(db, _id);
   await logAudit({
     actorUserId: actor.userId,
     actorRole: actor.role,
     action: "admin.animal.update",
     target: { type: "animal", id: parsedId.data },
     before,
-    after,
+    after: await db.collection<AnimalDoc>("animals").findOne({ _id }),
   });
 
   if (after) {
-    await syncAnimalUpdate(after, ranch, lot, { selfieFile, deleteSelfie });
+    await syncAnimalUpdate(after, ranch, lot, { selfieFile: photoFile, deleteSelfie });
+    const syncedAnimal = await db.collection<AnimalDoc>("animals").findOne({ _id });
+    if (weight && syncedAnimal?.ixorigueAnimalId && ranch.ixorigueRanchId) {
+      // Creating a previously unsynced animal may already have synced this
+      // weighing as its initial weight. Do not submit it to Ixorigue twice.
+      const pendingWeight = await db.collection<AnimalWeightDoc>("animal_weights").findOne({ _id: weight._id });
+      if (pendingWeight && pendingWeight.syncStatus !== "synced") {
+        await syncAnimalWeight(pendingWeight, syncedAnimal, ranch);
+      }
+    }
   }
-
+  if (weight) await recomputeAnimalCurrentWeight(db, _id);
   const refreshed = await db.collection<AnimalDoc>("animals").findOne({ _id });
-  return NextResponse.json({ animal: refreshed ? serializeAnimal(refreshed) : null });
+  return NextResponse.json({ animal: refreshed ? (await enrichAnimals(db, [refreshed]))[0] : null });
 }
 
 export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {

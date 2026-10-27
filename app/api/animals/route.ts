@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { enrichAnimals } from "@/lib/server/animal-history";
+import type { AnimalDoc } from "@/lib/db/types";
 import { isAdmin, requireSessionUser } from "@/lib/server/auth";
 
 export async function GET(request: NextRequest) {
@@ -30,14 +32,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const animals = await db.collection("animals").find({ lotId: new ObjectId(lotId) }).sort({ createdAt: -1 }).toArray();
+  const animals = await db.collection<AnimalDoc>("animals").find({ lotId: new ObjectId(lotId) }).sort({ createdAt: -1 }).toArray();
 
   return NextResponse.json({
-    animals: animals.map((item) => ({
-      ...item,
-      _id: item._id.toString(),
-      farmId: item.farmId.toString(),
-      lotId: item.lotId.toString(),
-    })),
+    animals: await enrichAnimals(db, animals),
   });
 }

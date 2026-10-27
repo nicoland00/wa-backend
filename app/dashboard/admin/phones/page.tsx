@@ -80,8 +80,8 @@ export default function AdminPhonesPage() {
 
   if (!canView) {
     return (
-      <main className="min-h-screen bg-[#f7f9fb] p-6">
-        <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 text-sm text-slate-700 shadow-sm">
+      <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
+        <div className="mx-auto max-w-3xl rounded-lg border border-[#e1e5e1] bg-white p-6 text-sm text-slate-700 shadow-none">
           <p>403 - No tienes permisos para acceder a esta página.</p>
           <Link href="/dashboard" className="mt-3 inline-block text-slate-900 underline">
             Volver al dashboard
@@ -92,16 +92,13 @@ export default function AdminPhonesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-5xl space-y-4">
-        <Link href="/dashboard" className="inline-block text-sm text-slate-600 hover:text-slate-900">
-          ← Volver al dashboard
-        </Link>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Solicitudes pendientes de teléfono</h1>
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Solicitudes pendientes de teléfono</h1>
           {!canDecide ? (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Institutional users can review pending requests here, but approval decisions remain admin-only.
             </p>
           ) : null}

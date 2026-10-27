@@ -24,6 +24,7 @@ async function loadAwsSdk() {
     };
     PutObjectCommand: new (params: Record<string, unknown>) => unknown;
     GetObjectCommand: new (params: Record<string, unknown>) => unknown;
+    DeleteObjectCommand: new (params: Record<string, unknown>) => unknown;
   };
   const presigner = (await dynamicImport("@aws-sdk/s3-request-presigner")) as {
     getSignedUrl: (client: unknown, command: unknown, params: { expiresIn: number }) => Promise<string>;
@@ -134,4 +135,41 @@ export async function getSignedDownloadUrl(storage: StoredFileRef): Promise<stri
   }
 
   return null;
+}
+
+export async function deleteStoredFile(storage: StoredFileRef): Promise<void> {
+  if (storage.provider === "gridfs") {
+    if (!ObjectId.isValid(storage.key)) throw new Error("Invalid stored video identifier");
+    const db = await getDb();
+    // Missing bytes should not prevent retrying a video deletion.
+    const fileId = new ObjectId(storage.key);
+    if (await db.collection("media.files").findOne({ _id: fileId })) {
+      await new GridFSBucket(db, { bucketName: "media" }).delete(fileId);
+    }
+    return;
+  }
+  if (storage.provider === "local") {
+    const base = path.resolve(getLocalStorageBaseDir());
+    const filePath = path.resolve(base, storage.key);
+    if (!filePath.startsWith(`${base}${path.sep}`)) throw new Error("Invalid stored video path");
+    await fs.rm(filePath, { force: true });
+    return;
+  }
+  if (storage.provider === "vercel_blob") {
+    const dynamicImport = new Function("m", "return import(m)") as (m: string) => Promise<unknown>;
+    const blob = await dynamicImport("@vercel/blob") as { del: (url: string, options: { token?: string }) => Promise<void> };
+    await blob.del(storage.url ?? storage.key, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    return;
+  }
+  if ((storage.provider === "s3" || storage.provider === "r2") && storage.bucket && process.env.S3_ENDPOINT) {
+    const { s3 } = await loadAwsSdk();
+    const client = new s3.S3Client({
+      region: process.env.S3_REGION || "auto", endpoint: process.env.S3_ENDPOINT,
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+      credentials: { accessKeyId: process.env.S3_ACCESS_KEY_ID || "", secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "" },
+    });
+    await client.send(new s3.DeleteObjectCommand({ Bucket: storage.bucket, Key: storage.key }));
+    return;
+  }
+  throw new Error("Video storage is not configured");
 }

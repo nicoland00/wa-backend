@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { requireSessionUser } from "@/lib/server/auth";
-import { serializeImport } from "@/lib/server/serializers";
+import { enrichImports } from "@/lib/server/import-history";
 import type { ImportDoc, RanchDoc } from "@/lib/db/types";
 
 export async function GET() {
@@ -18,5 +18,5 @@ export async function GET() {
   }
 
   const imports = await db.collection<ImportDoc>("imports").find({ ranchId: ranch._id }).sort({ createdAt: -1 }).toArray();
-  return NextResponse.json({ imports: imports.map(serializeImport) });
+  return NextResponse.json({ imports: await enrichImports(db, imports) });
 }

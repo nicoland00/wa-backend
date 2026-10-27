@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -50,15 +49,14 @@ export default function AdminFarmsPage() {
     }
   }
 
-  if (status === "loading") return <main className="p-6 text-sm text-slate-600">Loading...</main>;
-  if (!canView) return <main className="p-6 text-sm text-slate-600">Forbidden</main>;
+  if (status === "loading") return <main className="p-6 text-sm text-slate-600">Cargando…</main>;
+  if (!canView) return <main className="p-6 text-sm text-slate-600">No tienes acceso a esta sección.</main>;
 
   return (
-    <main className="min-h-screen bg-[#f7f9fb] p-6">
+    <main className="min-h-screen bg-[#f6f7f4] p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-5xl space-y-4">
-        <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">← Back</Link>
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Pending farm approvals</h1>
+        <section className="rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-none">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Fincas pendientes de aprobación</h1>
           {!canManage ? <p className="mt-3 text-sm text-slate-600">Institutional users can review pending farms here, but only admins can approve or reject them.</p> : null}
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">

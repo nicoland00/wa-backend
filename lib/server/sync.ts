@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { recomputeAnimalCurrentWeight } from "@/lib/server/animal-updates";
 import {
   addAnimalWeight,
   createAnimal,
@@ -405,7 +406,7 @@ export async function syncAnimalWeight(
       { _id: weightDoc._id },
       { $set: { ixorigueWeightId: remoteWeight.id, syncStatus: "synced", syncError: null, updatedAt: new Date() } },
     );
-    await db.collection("animals").updateOne({ _id: animal._id }, { $set: { currentWeight: weightDoc.weight, updatedAt: new Date() } });
+    await recomputeAnimalCurrentWeight(db, animal._id);
     await finalizeSyncJob("animal_weight", weightDoc._id, "done", null);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -560,11 +561,37 @@ async function upsertRemoteAnimal(
 
   if (existing) {
     await db.collection<AnimalDoc>("animals").updateOne({ _id: existing._id }, { $set: nextDoc });
+    await preserveRemoteAnimalWeight(db, existing._id, remoteAnimal);
     return { skipped: false, created: false };
   }
 
-  await db.collection<AnimalDoc>("animals").insertOne(nextDoc as AnimalDoc);
+  const inserted = await db.collection<AnimalDoc>("animals").insertOne(nextDoc as AnimalDoc);
+  await preserveRemoteAnimalWeight(db, inserted.insertedId, remoteAnimal);
   return { skipped: false, created: true };
+}
+
+async function preserveRemoteAnimalWeight(db: Awaited<ReturnType<typeof getDb>>, animalId: ObjectId, remote: IxorigueAnimalDto) {
+  const measuredAt = asDate(remote.lastWeight?.date);
+  const weight = remote.lastWeight?.weight;
+  if (measuredAt && typeof weight === "number" && Number.isFinite(weight) && weight > 0) {
+    const now = new Date();
+    const remoteId = remote.lastWeight?.id;
+    // A weight submitted locally may reappear on the next pull. Reuse its remote
+    // identifier instead of manufacturing a second event for the same weighing.
+    const filter = remoteId
+      ? { animalId, ixorigueWeightId: remoteId }
+      : { animalId, weight, measuredAt };
+    await db.collection<AnimalWeightDoc>("animal_weights").updateOne(
+      filter,
+      { $set: { weight, measuredAt, syncStatus: "synced", syncError: null, updatedAt: now },
+        $setOnInsert: { animalId, ixorigueWeightId: remoteId ?? null, source: "ixorigue_sync", createdAt: now } },
+      { upsert: true },
+    );
+  }
+  // An undated upstream value cannot replace a newer dated local weighing.
+  if (await db.collection<AnimalWeightDoc>("animal_weights").findOne({ animalId })) {
+    await recomputeAnimalCurrentWeight(db, animalId);
+  }
 }
 
 export async function syncRemoteAnimals(ranch: RanchDoc): Promise<RemoteSyncSummary> {

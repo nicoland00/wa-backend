@@ -24,7 +24,7 @@ export type StoredMediaRef = {
 
 // A video attached to an animal, tagged with when it was added so the
 // dashboard can show each "update" in chronological order.
-export type AnimalVideoRef = StoredMediaRef & { addedAt?: Date };
+export type AnimalVideoRef = StoredMediaRef & { addedAt?: Date; importId?: ObjectId; measuredAt?: Date; weight?: number };
 
 export type UserDoc = {
   _id: ObjectId;
@@ -111,6 +111,7 @@ export type AnimalDoc = {
 export type AnimalWeightDoc = {
   _id: ObjectId;
   animalId: ObjectId;
+  importId?: ObjectId | null;
   ixorigueWeightId?: string | null;
   weight: number;
   measuredAt: Date;
@@ -128,6 +129,11 @@ export type ImportDoc = {
   farmId?: ObjectId;
   lotId: ObjectId | null;
   animalId?: ObjectId | null;
+  weightId?: ObjectId | null;
+  weight?: number | null;
+  measuredAt?: Date | null;
+  mutationToken?: string;
+  mutationStartedAt?: Date;
   source: "whatsapp_export" | "manual_upload";
   filename: string;
   mimeType: string | null;

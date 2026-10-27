@@ -59,6 +59,12 @@ export const animalPatchSchema = z.object({
 });
 
 export const animalWeightCreateSchema = z.object({
-  weight: z.coerce.number().positive(),
+  weight: z.coerce.number().finite().positive(),
   measuredAt: z.coerce.date().optional(),
+});
+
+export const videoAnimalAssignmentSchema = z.object({
+  animalId: objectIdSchema,
+  weight: z.coerce.number().finite().positive("Introduce un peso mayor que cero."),
+  measuredAt: z.union([z.string().trim().min(1), z.date()]).pipe(z.coerce.date()),
 });
