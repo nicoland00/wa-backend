@@ -170,7 +170,7 @@ export default function AdminAnimalsPage() {
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-[#52705e]">Administración / Ganado</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Animales</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">Identificación, pesajes y vídeos. Cada registro cuenta la evolución de tu ganado.</p>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">Consulta y mantenimiento de la identificación, los pesajes y los vídeos de los animales.</p>
         </div>{canManage && <button type="button" onClick={() => setShowCreate((value) => !value)} className={primary} aria-expanded={showCreate} aria-controls="new-animal">{showCreate ? "Cerrar formulario" : "+ Nuevo animal"}
         </button>}
       </header>

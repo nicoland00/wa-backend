@@ -154,7 +154,7 @@ export default function DashboardPage() {
   return <AdminShell>
     <main className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="text-xs font-medium text-[#3f7561]">Pastora / Resumen</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Tu ganado, al día.</h1><p className="mt-1 text-sm text-slate-500">Pesos, vídeos y evolución de cada animal en un mismo lugar.</p></div>
+        <div><p className="text-xs font-medium text-[#3f7561]">Pastora / Resumen</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Panel de administración</h1><p className="mt-1 text-sm text-slate-500">Consulta y gestión de animales, pesajes y registros de vídeo.</p></div>
         <div className="flex items-center gap-2">
           {hasAdminAccess ? <Link href={`/dashboard/admin/imports?ranchId=${selectedRanchId}${selectedLotId ? `&lotId=${selectedLotId}` : ""}`} className="rounded-lg bg-[#31574b] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#27473d]">{canEditAdmin ? "Subir vídeo" : "Ver vídeos"}</Link> : <><Link href="/dashboard/profile" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">Mi perfil</Link><button onClick={() => void signOut({ callbackUrl: "/login" })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">Salir</button></>}
         </div>

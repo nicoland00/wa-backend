@@ -3,8 +3,9 @@ import SessionProvider from "@/components/SessionProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Pastora · Gestión del ganado",
-  description: "Animales, pesajes y vídeos de tu finca en un mismo lugar.",
+  title: "Pastora · Administración",
+  description: "Panel de administración: animales, pesajes, vídeos y sincronización.",
+  icons: { icon: { url: "/pastora-mark.svg?v=1", type: "image/svg+xml" }, shortcut: "/pastora-mark.svg?v=1" },
 };
 
 export default function RootLayout({
