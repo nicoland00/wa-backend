@@ -188,14 +188,14 @@ export default function DashboardPage() {
       </section>
     </main>
     {activeAnimal ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 sm:p-6" onClick={() => { if (!savingWeight) setActiveAnimalId(null); }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="animal-title" tabIndex={-1} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white outline-none" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="animal-title" tabIndex={-1} className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-xl bg-white outline-none" onClick={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#e1e5e1] bg-white p-5 sm:px-7"><div><p className="text-xs text-slate-500">Ficha del animal · {lotById.get(activeAnimal.lotId)?.name ?? "Sin lote"}</p><h2 id="animal-title" className="mt-1 text-xl font-semibold text-slate-900">{activeAnimal.earTagNumber || activeAnimal.name || "Sin crotal"}</h2></div><button disabled={savingWeight} onClick={() => setActiveAnimalId(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 disabled:opacity-50" aria-label="Cerrar ficha del animal">Cerrar ×</button></header>
         <div className="space-y-6 p-5 sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4"><AnimalWeightSummary animal={activeAnimal} />{canAddWeight ? <button disabled={savingWeight} onClick={() => router.push(`/dashboard/admin/imports?ranchId=${selectedRanchId}&lotId=${activeAnimal.lotId}`)} className="rounded-lg bg-[#31574b] px-3 py-2.5 text-xs font-medium text-white disabled:opacity-50">+ Vídeo y peso</button> : null}</div>
           {notice ? <p role="status" className="rounded-lg border border-[#d4e3d5] bg-[#f0f6ef] px-4 py-3 text-sm text-[#31574b]">{notice}</p> : null}
 
           <dl className="grid grid-cols-2 gap-4 rounded-lg border border-[#e1e5e1] bg-[#fafbf9] p-4 sm:grid-cols-4">{[["Raza", activeAnimal.breed || "—"], ["Sexo", activeAnimal.sex || "—"], ["Marca", activeAnimal.brandNumber || "—"], ["Nacimiento", activeAnimal.birthDate ? formatRecordDate(activeAnimal.birthDate) : "—"]].map(([label, value]) => <div key={label}><dt className="text-[11px] text-slate-500">{label}</dt><dd className="mt-1 text-xs font-medium text-slate-800">{value}</dd></div>)}</dl>
-          <AnimalWeightHistory records={activeAnimal.weightHistory} videos={activeAnimal.videos?.length ? activeAnimal.videos : activeAnimal.videoUrl ? [{ url: activeAnimal.videoUrl }] : []} />
+          <AnimalWeightHistory initialWeight={activeAnimal.initialWeight} currentWeight={activeAnimal.currentWeight} records={activeAnimal.weightHistory} videos={activeAnimal.videos?.length ? activeAnimal.videos : activeAnimal.videoUrl ? [{ url: activeAnimal.videoUrl }] : []} />
           {hasAdminAccess ? <p className="border-t border-slate-100 pt-4 text-xs text-slate-500">Puedes añadir y eliminar los vídeos de este animal desde <Link href={`/dashboard/admin/imports?ranchId=${selectedRanchId}&lotId=${activeAnimal.lotId}`} className="font-medium text-[#31574b] underline underline-offset-2">la sección de vídeos</Link>.</p> : null}
         </div>
       </div>

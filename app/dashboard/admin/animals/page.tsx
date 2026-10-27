@@ -33,7 +33,7 @@ function dateLabel(value?: string | null) { if (!value) return "Sin fecha regist
 function kilos(value: number) { return value.toLocaleString("es-ES", { maximumFractionDigits: 2 }); }
 function delta(value?: number | null) { return value == null ? "Primer registro" : `${value > 0 ? "+" : ""}${kilos(value)} kg`; }
 async function readJson<T>(response: Response): Promise<T> { return response.json().catch(() => ({})) as Promise<T>; }
-function Modal({ title, children, onClose, busy = false }: { title: string; children: ReactNode; onClose: () => void; busy?: boolean; }) {
+function Modal({ title, children, onClose, busy = false, wide = false }: { title: string; children: ReactNode; onClose: () => void; busy?: boolean; wide?: boolean; }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
@@ -57,7 +57,7 @@ function Modal({ title, children, onClose, busy = false }: { title: string; chil
     return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
   return <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/45 p-4" onClick={() => { if (!busy) onClose(); }}>
-    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className="my-auto max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-xl sm:p-6" onClick={(event) => event.stopPropagation()}>
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className={`my-auto max-h-[90dvh] w-full ${wide ? "max-w-6xl" : "max-w-xl"} overflow-y-auto rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-xl sm:p-6`} onClick={(event) => event.stopPropagation()}>
       <div className="mb-5 flex items-start justify-between gap-4">
         <h2 className="text-lg font-semibold text-slate-900">{title}
         </h2>
@@ -359,9 +359,9 @@ export default function AdminAnimalsPage() {
           </div>
         </form>
       </Modal>}
-      {historyAnimal && <Modal title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
+      {historyAnimal && <Modal wide title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
         <p className="mb-5 text-sm leading-6 text-slate-500">Pesajes ordenados del más reciente al más antiguo. La variación compara cada registro con el pesaje anterior.</p>
-        <AnimalWeightHistory records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
+        <AnimalWeightHistory initialWeight={historyAnimal.initialWeight} currentWeight={historyAnimal.currentWeight} records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
         <div className="mt-5 border-t border-[#e1e5e1] pt-4">
           <Link href={`/dashboard/admin/imports?ranchId=${ranchId}&lotId=${historyAnimal.lotId}`} className="text-sm font-medium text-[#31574b] underline underline-offset-4">Ver vídeos del lote</Link>
         </div>
