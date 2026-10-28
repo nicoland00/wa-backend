@@ -57,7 +57,7 @@ function Modal({ title, children, onClose, busy = false, wide = false }: { title
     return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
   return <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/45 p-4" onClick={() => { if (!busy) onClose(); }}>
-    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className={`my-auto max-h-[90dvh] w-full ${wide ? "max-w-6xl" : "max-w-xl"} overflow-y-auto rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-xl sm:p-6`} onClick={(event) => event.stopPropagation()}>
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className={`my-auto max-h-[90dvh] w-full ${wide ? "max-w-5xl" : "max-w-xl"} overflow-y-auto rounded-lg border border-[#e1e5e1] bg-white p-5 shadow-xl sm:p-6`} onClick={(event) => event.stopPropagation()}>
       <div className="mb-5 flex items-start justify-between gap-4">
         <h2 className="text-lg font-semibold text-slate-900">{title}
         </h2>
@@ -311,7 +311,7 @@ export default function AdminAnimalsPage() {
               </td>
               <td className="px-5 py-4">
                 <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setHistoryAnimal(animal)} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">Ver ficha</button>{canManage && <>
+                  <button type="button" onClick={() => setHistoryAnimal(animal)} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">Historial</button>{canManage && <>
 
                     <button type="button" disabled={busy} onClick={() => void openVideoModal(animal)} className="rounded-md bg-[#edf3ed] px-2.5 py-1.5 text-xs font-medium text-[#31574b] hover:bg-[#e2ebe2]">+ Vídeo</button>
                     <button type="button" disabled={busy} onClick={() => { setDeleteModal(animal); setModalError(""); }} aria-label={`Eliminar animal ${animal.earTagNumber}`} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700">
@@ -359,7 +359,7 @@ export default function AdminAnimalsPage() {
           </div>
         </form>
       </Modal>}
-      {historyAnimal && <Modal title={`Ficha · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
+      {historyAnimal && <Modal wide title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
         <AnimalWeightDetails initialWeight={historyAnimal.initialWeight} currentWeight={historyAnimal.currentWeight} records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
         <div className="mt-5 border-t border-[#e1e5e1] pt-4">
           <Link href={`/dashboard/admin/imports?ranchId=${ranchId}&lotId=${historyAnimal.lotId}`} className="text-sm font-medium text-[#31574b] underline underline-offset-4">Ver vídeos del lote</Link>

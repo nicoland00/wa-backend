@@ -59,63 +59,112 @@ export function AnimalWeightSummary({ animal, compact = false }: { animal: { cur
   );
 }
 
-export default function AnimalWeightDetails({ records = [], videos = [], initialWeight, currentWeight }: {
-  records?: WeightRecord[];
-  videos?: AnimalHistoryVideo[];
+function WeightChart({ records }: { records: WeightRecord[] }) {
+  if (records.length < 2) return <div className="rounded-lg border border-[#e1e5e1] bg-[#fafbf9] p-4"><h4 className="text-sm font-semibold text-slate-800">Evolución del peso</h4><p className="mt-4 text-xs leading-relaxed text-slate-500">Se necesitan al menos dos pesajes fechados para mostrar la evolución.</p></div>;
+  const chronological = [...records].reverse();
+  const values = chronological.map((item) => item.weight);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const first = new Date(chronological[0].measuredAt).getTime();
+  const last = new Date(chronological.at(-1)!.measuredAt).getTime();
+  const points = chronological.map((item, index) => ({
+    x: 24 + (last > first ? (new Date(item.measuredAt).getTime() - first) / (last - first) : index / (chronological.length - 1)) * 552,
+    y: 98 - ((item.weight - min) / range) * 68,
+    item,
+  }));
+  return (
+    <div className="rounded-lg border border-[#e1e5e1] bg-[#fafbf9] px-4 pb-3 pt-4">
+      <div className="flex justify-between text-xs text-slate-500"><span>Evolución del peso</span><span>{formatWeight(min)}–{formatWeight(max)} kg</span></div>
+      <svg viewBox="0 0 600 120" className="mt-2 w-full" role="img" aria-label={`Evolución de ${formatWeight(values[0])} a ${formatWeight(values.at(-1)!)} kilos. Los registros detallados aparecen a continuación.`}>
+        <path d="M24 105H576 M24 65H576 M24 25H576" fill="none" stroke="#e2e8e2" strokeDasharray="3 5" />
+        <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke="#3f7561" strokeWidth="2.5" strokeLinejoin="round" />
+        {points.map(({ x, y, item }) => <circle key={item._id} cx={x} cy={y} r="4" fill="#fff" stroke="#3f7561" strokeWidth="2"><title>{formatRecordDate(item.measuredAt)}: {formatWeight(item.weight)} kg</title></circle>)}
+      </svg>
+      <div className="flex justify-between text-[11px] text-slate-500"><span>{formatRecordDate(chronological[0].measuredAt)}</span><span>{formatRecordDate(chronological.at(-1)!.measuredAt)}</span></div>
+    </div>
+  );
+}
+
+function InitialWeightComparison({ records, initialWeight, currentWeight }: {
+  records: WeightRecord[];
   initialWeight?: number;
   currentWeight?: number;
 }) {
+  const oldest = records.at(-1);
+  const latest = records[0];
+  const initial = oldest?.weight ?? (initialWeight != null && Number.isFinite(initialWeight) && initialWeight > 0 ? initialWeight : undefined);
+  const last = latest?.weight ?? (currentWeight != null && currentWeight > 0 ? currentWeight : undefined);
+  if (initial == null || last == null) return <div className="rounded-lg border border-[#e1e5e1] bg-white p-4"><h4 className="text-sm font-semibold text-slate-800">Peso inicial vs. último peso</h4><p className="mt-4 text-xs leading-relaxed text-slate-500">Todavía no hay suficientes datos de peso para comparar.</p></div>;
+  const initialDate = oldest?.weight === initial ? oldest.measuredAt : null;
+  const difference = Number((last - initial).toFixed(6));
+  const percentage = initial > 0 ? difference / initial * 100 : 0;
+  const signed = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${formatWeight(Math.abs(value))}`;
+  const tone = difference > 0 ? "text-[#315c43]" : difference < 0 ? "text-[#9b4434]" : "text-slate-600";
+  return (
+    <section className="rounded-lg border border-[#e1e5e1] bg-white p-4" aria-label="Comparación del peso inicial y final">
+      <h4 className="text-sm font-semibold text-slate-800">Peso inicial y final</h4>
+      <dl className="mt-3 grid grid-cols-2 gap-4">
+        {[
+          { label: "Inicial", weight: initial, date: initialDate },
+          { label: "Final", weight: last, date: latest?.measuredAt },
+        ].map(({ label, weight, date }) => <div key={label}>
+          <dt className="text-xs text-slate-500">{label}</dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{formatWeight(weight)} <span className="text-xs font-normal text-slate-400">kg</span></dd>
+          <dd className="mt-1 text-[11px] text-slate-400">{formatRecordDate(date)}</dd>
+        </div>)}
+      </dl>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <span className="text-xs text-slate-500">{difference > 0 ? "Ganancia total" : difference < 0 ? "Pérdida total" : "Sin variación"}</span>
+        <p className={`text-sm font-semibold tabular-nums ${tone}`}>{signed(difference)} kg <span className="ml-1 text-xs font-normal">({signed(percentage)} %)</span></p>
+      </div>
+    </section>
+  );
+}
+
+export default function AnimalWeightDetails({ records = [], videos = [], initialWeight, currentWeight }: { records?: WeightRecord[]; videos?: AnimalHistoryVideo[]; initialWeight?: number; currentWeight?: number }) {
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const sorted = [...records].sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-  const first = sorted.at(-1);
-  const latest = sorted[0];
-  const initial = first?.weight ?? (initialWeight != null && initialWeight > 0 ? initialWeight : null);
-  const last = latest?.weight ?? (currentWeight != null && currentWeight > 0 ? currentWeight : null);
-  const difference = initial != null && last != null ? Number((last - initial).toFixed(6)) : null;
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState("");
-  const video = videos.find((item) => item.url === selectedVideoUrl) ?? videos[0];
-  const changeLabel = difference == null ? "Variación total" : difference > 0 ? "Ganancia total" : difference < 0 ? "Pérdida total" : "Sin variación";
-  const singleMeasurement = sorted.length === 1 && initial === last;
+  const linkedVideoIds = new Set(sorted.map((record) => record.importId).filter(Boolean));
+  const standaloneVideos = videos.filter((video) => !video.importId || !linkedVideoIds.has(video.importId));
+  const events = [
+    ...sorted.map((record) => ({ id: record._id, date: record.measuredAt, record, video: record.importId ? videos.find((video) => video.importId === record.importId) : undefined })),
+    ...standaloneVideos.map((video, index) => ({ id: `video-${video.importId ?? index}`, date: video.measuredAt ?? video.createdAt ?? "", record: undefined, video })),
+  ].sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0));
 
   return (
-    <div className="space-y-5">
-      <section aria-label="Peso inicial y peso final" className="overflow-hidden rounded-lg border border-[#e1e5e1]">
-        <dl className="grid grid-cols-2 divide-x divide-[#e1e5e1] bg-white">
-          {[
-            { label: "Peso inicial", weight: initial, date: first?.measuredAt },
-            { label: "Peso final", weight: last, date: latest?.measuredAt },
-          ].map(({ label, weight, date }) => (
-            <div key={label} className="px-4 py-5 sm:px-5">
-              <dt className="text-xs font-medium text-slate-500">{label}</dt>
-              <dd className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-slate-900">
-                {weight != null ? formatWeight(weight) : "—"}<span className="ml-1 text-sm font-normal text-slate-400">kg</span>
-              </dd>
-              <dd className="mt-1.5 text-[11px] text-slate-400">{date ? formatRecordDate(date) : "Sin fecha registrada"}</dd>
-            </div>
+    <section aria-label="Historial de pesos y vídeos" className="grid items-start gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <div className="min-w-0 overflow-hidden rounded-lg border border-[#e1e5e1] bg-white">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#e1e5e1] px-4 py-3"><h3 className="text-sm font-semibold text-slate-900">Historial del animal</h3><span className="text-xs text-slate-500">Más reciente primero</span></div>
+      {!events.length ? <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">Todavía no hay pesos ni vídeos registrados.</div> : (
+        <ol className="max-h-[min(40dvh,340px)] divide-y divide-slate-100 overflow-y-auto overscroll-contain">
+          {events.map(({ id, date, record, video }) => (
+            <li key={id} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <time dateTime={date || undefined} className="text-xs font-medium text-slate-600">{formatRecordDate(date)}</time>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold tabular-nums text-slate-900">{record ? `${formatWeight(record.weight)} kg` : video?.weight != null ? `${formatWeight(video.weight)} kg` : "Sin pesaje"}</span>
+                    {record ? <WeightChange value={record.deltaKg} /> : null}
+                  </div>
+                  {record?.previousMeasuredAt ? <p className="mt-1 text-[11px] text-slate-400">Anterior: {formatWeight(record.previousWeight!)} kg · {formatRecordDate(record.previousMeasuredAt)}</p> : null}
+                  {video?.weightInherited && !record ? <p className="mt-1 text-[11px] text-slate-400">Peso actual del animal · pendiente de confirmar</p> : null}
+                </div>
+                {video ? <button type="button" onClick={() => setActiveVideoId((active) => active === id ? null : id)} aria-expanded={activeVideoId === id} aria-controls={`animal-video-${id}`} className="shrink-0 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-[#31574b] hover:bg-[#f3f6f1]">{activeVideoId === id ? "Cerrar vídeo" : "Ver vídeo"}</button> : <span className="pt-1 text-[11px] text-slate-400">Pesaje</span>}
+              </div>
+              {video && activeVideoId === id ? <div id={`animal-video-${id}`} className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                <video src={video.url} controls preload="metadata" playsInline className="max-h-48 w-full bg-slate-950" aria-label={`Vídeo del animal del ${formatRecordDate(date)}`} />
+                <p className="truncate px-3 py-2 text-[11px] text-slate-500" title={video.filename}>{video.filename || "Vídeo del animal"}{video.createdAt ? ` · Subido el ${formatRecordDate(video.createdAt)}` : ""}</p>
+              </div> : null}
+            </li>
           ))}
-        </dl>
-        <div className="flex items-center justify-between gap-3 border-t border-[#e1e5e1] bg-[#f7f9f5] px-4 py-3 sm:px-5">
-          <span className="text-xs text-slate-500">{singleMeasurement ? "Un único pesaje registrado" : changeLabel}</span>
-          {!singleMeasurement && difference != null ? <span className={`text-sm font-semibold tabular-nums ${difference > 0 ? "text-[#315c43]" : difference < 0 ? "text-[#9b4434]" : "text-slate-600"}`}>
-            {difference > 0 ? "+" : difference < 0 ? "−" : ""}{formatWeight(Math.abs(difference))} kg
-          </span> : null}
-        </div>
-      </section>
-
-      {video ? <section aria-label="Vídeos del animal" className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-xs font-medium text-slate-600">{videos.length > 1 ? "Vídeos del animal" : "Vídeo del animal"}</h3>
-          {videos.length > 1 ? <label className="min-w-0 max-w-full">
-            <span className="sr-only">Seleccionar vídeo del animal</span>
-            <select value={video.url} onChange={(event) => setSelectedVideoUrl(event.target.value)} className="max-w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600">
-              {videos.map((item, index) => <option key={item.importId ?? item.url} value={item.url}>Vídeo {videos.length - index} · {formatRecordDate(item.measuredAt ?? item.createdAt)}</option>)}
-            </select>
-          </label> : null}
-        </div>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
-          <video key={video.url} src={video.url} controls preload="metadata" playsInline className="max-h-64 w-full" aria-label="Vídeo del animal" />
-        </div>
-        <p className="text-[11px] text-slate-400">{video.measuredAt || video.createdAt ? formatRecordDate(video.measuredAt ?? video.createdAt) : "Fecha no registrada"}{video.weight != null ? ` · ${formatWeight(video.weight)} kg${video.weightInherited ? " (peso de referencia)" : ""}` : ""}</p>
-      </section> : null}
-    </div>
+        </ol>
+      )}
+      </div>
+      <aside className="min-w-0 space-y-4" aria-label="Gráficos de peso del animal">
+        <WeightChart records={sorted} />
+        <InitialWeightComparison records={sorted} initialWeight={initialWeight} currentWeight={currentWeight} />
+      </aside>
+    </section>
   );
 }
