@@ -6,8 +6,8 @@ import type { FormEvent, ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { canMutateAdminData, canViewAdminScreens } from "@/lib/permissions";
-import AnimalWeightHistory from "@/components/AnimalWeightHistory";
-import type { AnimalHistoryVideo } from "@/components/AnimalWeightHistory";
+import AnimalWeightDetails from "@/components/AnimalWeightDetails";
+import type { AnimalHistoryVideo } from "@/components/AnimalWeightDetails";
 
 type Ranch = { _id: string; name: string; };
 type Lot = { _id: string; ranchId: string; name: string; };
@@ -311,7 +311,7 @@ export default function AdminAnimalsPage() {
               </td>
               <td className="px-5 py-4">
                 <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setHistoryAnimal(animal)} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">Historial</button>{canManage && <>
+                  <button type="button" onClick={() => setHistoryAnimal(animal)} className="rounded-md border border-[#d8dfd8] px-2.5 py-1.5 text-xs text-slate-600 hover:bg-[#f6f7f4]">Ver ficha</button>{canManage && <>
 
                     <button type="button" disabled={busy} onClick={() => void openVideoModal(animal)} className="rounded-md bg-[#edf3ed] px-2.5 py-1.5 text-xs font-medium text-[#31574b] hover:bg-[#e2ebe2]">+ Vídeo</button>
                     <button type="button" disabled={busy} onClick={() => { setDeleteModal(animal); setModalError(""); }} aria-label={`Eliminar animal ${animal.earTagNumber}`} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700">
@@ -359,9 +359,8 @@ export default function AdminAnimalsPage() {
           </div>
         </form>
       </Modal>}
-      {historyAnimal && <Modal wide title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
-        <p className="mb-5 text-sm leading-6 text-slate-500">Pesajes ordenados del más reciente al más antiguo. La variación compara cada registro con el pesaje anterior.</p>
-        <AnimalWeightHistory initialWeight={historyAnimal.initialWeight} currentWeight={historyAnimal.currentWeight} records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
+      {historyAnimal && <Modal title={`Ficha · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
+        <AnimalWeightDetails initialWeight={historyAnimal.initialWeight} currentWeight={historyAnimal.currentWeight} records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
         <div className="mt-5 border-t border-[#e1e5e1] pt-4">
           <Link href={`/dashboard/admin/imports?ranchId=${ranchId}&lotId=${historyAnimal.lotId}`} className="text-sm font-medium text-[#31574b] underline underline-offset-4">Ver vídeos del lote</Link>
         </div>
