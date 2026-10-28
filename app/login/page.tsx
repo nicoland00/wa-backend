@@ -18,7 +18,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f9fb] p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
-        <div className="mb-6 flex items-center gap-3"><Image src="/pastora-mark.svg" alt="" width={36} height={36} priority /><div><p className="font-semibold text-[#31574b]">Pastora</p><p className="text-xs text-slate-500">Administración</p></div></div>
+        <div className="mb-6 flex items-center gap-3"><Image src="/pastora-logo.png" alt="" width={48} height={40} priority /><div><p className="font-semibold text-[#31574b]">Pastora</p><p className="text-xs text-slate-500">Administración</p></div></div>
         <h1 className="text-2xl font-semibold text-slate-900">Iniciar sesión</h1>
         <p className="mt-2 text-sm text-slate-600">Usa tu cuenta Google para continuar.</p>
         <button
