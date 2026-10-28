@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getWeightEvolution } from "@/lib/weight-evolution";
 
 export type WeightRecord = {
   _id: string;
@@ -59,65 +60,39 @@ export function AnimalWeightSummary({ animal, compact = false }: { animal: { cur
   );
 }
 
-function WeightChart({ records }: { records: WeightRecord[] }) {
-  if (records.length < 2) return <div className="rounded-lg border border-[#e1e5e1] bg-[#fafbf9] p-4"><h4 className="text-sm font-semibold text-slate-800">Evolución del peso</h4><p className="mt-4 text-xs leading-relaxed text-slate-500">Se necesitan al menos dos pesajes fechados para mostrar la evolución.</p></div>;
+function WeightChart({ records, initialWeight, currentWeight }: { records: WeightRecord[]; initialWeight?: number; currentWeight?: number }) {
+  const { initial, latest, difference, percentage } = getWeightEvolution(records, initialWeight, currentWeight);
   const chronological = [...records].reverse();
   const values = chronological.map((item) => item.weight);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const first = new Date(chronological[0].measuredAt).getTime();
-  const last = new Date(chronological.at(-1)!.measuredAt).getTime();
+  const first = chronological[0] ? new Date(chronological[0].measuredAt).getTime() : 0;
+  const last = chronological.at(-1) ? new Date(chronological.at(-1)!.measuredAt).getTime() : 0;
   const points = chronological.map((item, index) => ({
-    x: 24 + (last > first ? (new Date(item.measuredAt).getTime() - first) / (last - first) : index / (chronological.length - 1)) * 552,
+    x: 24 + (last > first ? (new Date(item.measuredAt).getTime() - first) / (last - first) : index / Math.max(1, chronological.length - 1)) * 552,
     y: 98 - ((item.weight - min) / range) * 68,
     item,
   }));
-  return (
-    <div className="rounded-lg border border-[#e1e5e1] bg-[#fafbf9] px-4 pb-3 pt-4">
-      <div className="flex justify-between text-xs text-slate-500"><span>Evolución del peso</span><span>{formatWeight(min)}–{formatWeight(max)} kg</span></div>
-      <svg viewBox="0 0 600 120" className="mt-2 w-full" role="img" aria-label={`Evolución de ${formatWeight(values[0])} a ${formatWeight(values.at(-1)!)} kilos. Los registros detallados aparecen a continuación.`}>
-        <path d="M24 105H576 M24 65H576 M24 25H576" fill="none" stroke="#e2e8e2" strokeDasharray="3 5" />
-        <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke="#3f7561" strokeWidth="2.5" strokeLinejoin="round" />
-        {points.map(({ x, y, item }) => <circle key={item._id} cx={x} cy={y} r="4" fill="#fff" stroke="#3f7561" strokeWidth="2"><title>{formatRecordDate(item.measuredAt)}: {formatWeight(item.weight)} kg</title></circle>)}
-      </svg>
-      <div className="flex justify-between text-[11px] text-slate-500"><span>{formatRecordDate(chronological[0].measuredAt)}</span><span>{formatRecordDate(chronological.at(-1)!.measuredAt)}</span></div>
-    </div>
-  );
-}
-
-function InitialWeightComparison({ records, initialWeight, currentWeight }: {
-  records: WeightRecord[];
-  initialWeight?: number;
-  currentWeight?: number;
-}) {
-  const oldest = records.at(-1);
-  const latest = records[0];
-  const initial = oldest?.weight ?? (initialWeight != null && Number.isFinite(initialWeight) && initialWeight > 0 ? initialWeight : undefined);
-  const last = latest?.weight ?? (currentWeight != null && currentWeight > 0 ? currentWeight : undefined);
-  if (initial == null || last == null) return <div className="rounded-lg border border-[#e1e5e1] bg-white p-4"><h4 className="text-sm font-semibold text-slate-800">Peso inicial vs. último peso</h4><p className="mt-4 text-xs leading-relaxed text-slate-500">Todavía no hay suficientes datos de peso para comparar.</p></div>;
-  const initialDate = oldest?.weight === initial ? oldest.measuredAt : null;
-  const difference = Number((last - initial).toFixed(6));
-  const percentage = initial > 0 ? difference / initial * 100 : 0;
   const signed = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${formatWeight(Math.abs(value))}`;
-  const tone = difference > 0 ? "text-[#315c43]" : difference < 0 ? "text-[#9b4434]" : "text-slate-600";
   return (
-    <section className="rounded-lg border border-[#e1e5e1] bg-white p-4" aria-label="Comparación del peso inicial y final">
-      <h4 className="text-sm font-semibold text-slate-800">Peso inicial y final</h4>
-      <dl className="mt-3 grid grid-cols-2 gap-4">
-        {[
-          { label: "Inicial", weight: initial, date: initialDate },
-          { label: "Final", weight: last, date: latest?.measuredAt },
-        ].map(({ label, weight, date }) => <div key={label}>
-          <dt className="text-xs text-slate-500">{label}</dt>
-          <dd className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{formatWeight(weight)} <span className="text-xs font-normal text-slate-400">kg</span></dd>
-          <dd className="mt-1 text-[11px] text-slate-400">{formatRecordDate(date)}</dd>
-        </div>)}
-      </dl>
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-        <span className="text-xs text-slate-500">{difference > 0 ? "Ganancia total" : difference < 0 ? "Pérdida total" : "Sin variación"}</span>
-        <p className={`text-sm font-semibold tabular-nums ${tone}`}>{signed(difference)} kg <span className="ml-1 text-xs font-normal">({signed(percentage)} %)</span></p>
+    <section aria-label="Evolución desde el peso inicial" className="rounded-lg border border-[#e1e5e1] bg-[#fafbf9] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800">Evolución del peso</h3>
+        {difference != null ? <div className="text-right">
+          <p className={`text-sm font-semibold tabular-nums ${difference > 0 ? "text-[#315c43]" : difference < 0 ? "text-[#9b4434]" : "text-slate-600"}`}>{signed(difference)} kg <span className="font-normal">({signed(percentage!)} %)</span></p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{difference > 0 ? "Ganancia" : difference < 0 ? "Pérdida" : "Sin cambio"} desde el peso inicial</p>
+        </div> : null}
       </div>
+      {initial != null && latest != null ? <p className="mt-2 text-xs text-slate-500">Inicial: <span className="font-medium text-slate-700">{formatWeight(initial)} kg</span> <span aria-hidden="true">→</span> Último: <span className="font-medium text-slate-700">{formatWeight(latest)} kg</span></p> : null}
+      {records.length >= 2 ? <>
+        <svg viewBox="0 0 600 120" className="mt-2 w-full" role="img" aria-label={`Evolución del peso. Peso inicial: ${formatWeight(initial!)} kg. Último peso: ${formatWeight(latest!)} kg. Variación total: ${signed(difference!)} kg.`}>
+          <path d="M24 105H576 M24 65H576 M24 25H576" fill="none" stroke="#e2e8e2" strokeDasharray="3 5" />
+          <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke="#3f7561" strokeWidth="2.5" strokeLinejoin="round" />
+          {points.map(({ x, y, item }) => <circle key={item._id} cx={x} cy={y} r="4" fill="#fff" stroke="#3f7561" strokeWidth="2"><title>{formatRecordDate(item.measuredAt)}: {formatWeight(item.weight)} kg</title></circle>)}
+        </svg>
+        <div className="flex justify-between text-[11px] text-slate-500"><span>{formatRecordDate(chronological[0].measuredAt)}</span><span>{formatRecordDate(chronological.at(-1)!.measuredAt)}</span></div>
+      </> : <p className="mt-3 text-xs leading-relaxed text-slate-500">Se necesitan al menos dos pesajes fechados para trazar la evolución.</p>}
     </section>
   );
 }
@@ -133,7 +108,8 @@ export default function AnimalWeightDetails({ records = [], videos = [], initial
   ].sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0));
 
   return (
-    <section aria-label="Historial de pesos y vídeos" className="grid items-start gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+    <section aria-label="Historial de pesos y vídeos" className="space-y-4">
+      <WeightChart records={sorted} initialWeight={initialWeight} currentWeight={currentWeight} />
       <div className="min-w-0 overflow-hidden rounded-lg border border-[#e1e5e1] bg-white">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#e1e5e1] px-4 py-3"><h3 className="text-sm font-semibold text-slate-900">Historial del animal</h3><span className="text-xs text-slate-500">Más reciente primero</span></div>
       {!events.length ? <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">Todavía no hay pesos ni vídeos registrados.</div> : (
@@ -161,10 +137,7 @@ export default function AnimalWeightDetails({ records = [], videos = [], initial
         </ol>
       )}
       </div>
-      <aside className="min-w-0 space-y-4" aria-label="Gráficos de peso del animal">
-        <WeightChart records={sorted} />
-        <InitialWeightComparison records={sorted} initialWeight={initialWeight} currentWeight={currentWeight} />
-      </aside>
+
     </section>
   );
 }

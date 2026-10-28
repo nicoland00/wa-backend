@@ -188,7 +188,7 @@ export default function DashboardPage() {
       </section>
     </main>
     {activeAnimal ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 sm:p-6" onClick={() => { if (!savingWeight) setActiveAnimalId(null); }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="animal-title" tabIndex={-1} className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white outline-none" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="animal-title" tabIndex={-1} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white outline-none" onClick={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 border-b border-[#e1e5e1] bg-white p-5 sm:px-7">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">Ficha del animal · {lotById.get(activeAnimal.lotId)?.name ?? "Sin lote"}</p>

@@ -359,7 +359,7 @@ export default function AdminAnimalsPage() {
           </div>
         </form>
       </Modal>}
-      {historyAnimal && <Modal wide title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
+      {historyAnimal && <Modal title={`Historial · ${historyAnimal.earTagNumber}`} onClose={() => setHistoryAnimal(null)}>
         <AnimalWeightDetails initialWeight={historyAnimal.initialWeight} currentWeight={historyAnimal.currentWeight} records={historyAnimal.weightHistory} videos={historyAnimal.videos} />
         <div className="mt-5 border-t border-[#e1e5e1] pt-4">
           <Link href={`/dashboard/admin/imports?ranchId=${ranchId}&lotId=${historyAnimal.lotId}`} className="text-sm font-medium text-[#31574b] underline underline-offset-4">Ver vídeos del lote</Link>
