@@ -444,6 +444,9 @@ export async function getAnimalsLocations(
   const params = new URLSearchParams({ fromDate: fromDateIso, toDate: toDateIso });
   if (ixorigueAnimalId) params.set("animalId", ixorigueAnimalId);
   const payload = await request<unknown>(`/api/Animals/${ixorigueRanchId}/animals-locations?${params.toString()}`);
+  if (!Array.isArray(payload) && !(payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data))) {
+    throw new Error("Ixorigue locations response has an unrecognized format");
+  }
   return pickDataArray(payload).map((raw): IxorigueAnimalLocationHistory => {
     const a = raw as Record<string, unknown>;
     const locsRaw = Array.isArray(a.locations) ? (a.locations as unknown[]) : [];

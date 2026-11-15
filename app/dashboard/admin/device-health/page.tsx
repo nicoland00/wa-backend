@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { canViewAdminScreens } from "@/lib/permissions";
@@ -40,6 +40,8 @@ type HealthData = {
   ranchId: string;
   ranchName: string;
   lots: DeviceHealthLot[];
+  telemetry?: { status: "ok" | "empty"; receivedAnimals: number; positionCount: number };
+  warnings?: string[];
 };
 
 type Ranch = { _id: string; name: string };
@@ -176,6 +178,8 @@ export default function DeviceHealthPage() {
   const [endDate, setEndDate] = useState<string>(ranchLocalDate(new Date()));
   const [data, setData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const requestIdRef = useRef(0);
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
 
   const today = ranchLocalDate(new Date());
@@ -188,26 +192,32 @@ export default function DeviceHealthPage() {
   useEffect(() => {
     if (status !== "authenticated" || !canView) return;
     fetch("/api/admin/ranches", { cache: "no-store" })
-      .then((r) => r.json())
+      .then(async (r) => { if (!r.ok) throw new Error("No se pudieron cargar las fincas."); return r.json(); })
       .then((d: { ranches: Ranch[] }) => {
         setRanches(d.ranches);
         if (d.ranches.length > 0) setSelectedRanchId(d.ranches[0]._id);
       })
-      .catch(() => null);
+      .catch(() => setError("No se pudieron cargar las fincas. Recarga la página para volver a intentarlo."));
   }, [canView, status]);
 
   const loadData = useCallback(async (ranchId: string, m: RangeMode, end: string) => {
     if (!ranchId) return;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
+    setError("");
+    setData(null);
     try {
       const res = await fetch(`/api/admin/device-health?ranchId=${ranchId}&range=${m}&end=${end}`, { cache: "no-store" });
-      if (res.ok) {
-        const json = (await res.json()) as HealthData;
-        setData(json);
-        setExpandedLots(new Set(json.lots.map((l) => l.id)));
-      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? "No se pudieron consultar los dispositivos. Vuelve a intentarlo.");
+      if (!json || !Array.isArray(json.lots)) throw new Error("La respuesta de dispositivos no es válida.");
+      if (requestId !== requestIdRef.current) return;
+      setData(json as HealthData);
+      setExpandedLots(new Set((json as HealthData).lots.map((l) => l.id)));
+    } catch (cause) {
+      if (requestId === requestIdRef.current) setError(cause instanceof Error ? cause.message : "No se pudo conectar con el servidor.");
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -289,6 +299,13 @@ export default function DeviceHealthPage() {
             </div>
           </div>
         </div>
+
+        {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <p>{error}</p>
+          {selectedRanchId ? <button type="button" disabled={loading} onClick={() => void loadData(selectedRanchId, mode, endDate)} className="font-medium underline disabled:opacity-50">Reintentar</button> : null}
+        </div> : null}
+        {data?.telemetry?.status === "empty" && !loading ? <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Ixorigue ha respondido, pero no ha devuelto posiciones válidas para el periodo seleccionado. El 0 % indica ausencia de posiciones en esa consulta. Prueba un día anterior o el rango semanal.</p> : null}
+        {!loading ? data?.warnings?.map((warning) => <p key={warning} role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{warning}</p>) : null}
 
         {/* Fleet summary */}
         {data && !loading && (

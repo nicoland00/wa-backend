@@ -103,6 +103,9 @@ export async function GET(request: NextRequest) {
   const modeParam = searchParams.get("range");
   const mode: RangeMode = modeParam === "week" || modeParam === "month" ? modeParam : "day";
   const endDate = searchParams.get("end") ?? localNow().date; // local YYYY-MM-DD, inclusive
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(`${endDate}T00:00:00Z`)) || new Date(`${endDate}T00:00:00Z`).toISOString().slice(0, 10) !== endDate) {
+    return NextResponse.json({ error: "La fecha seleccionada no es válida." }, { status: 400 });
+  }
   const span = mode === "month" ? 30 : mode === "week" ? 7 : 1;
   const startDate = addDays(endDate, -(span - 1));
 
@@ -114,6 +117,8 @@ export async function GET(request: NextRequest) {
   const ranch = await db.collection<RanchDoc>("ranches").findOne({ _id: new ObjectId(parsedRanchId.data) });
   if (!ranch) return NextResponse.json({ error: "Ranch not found" }, { status: 404 });
 
+  if (!ranch.ixorigueRanchId) return NextResponse.json({ error: "Esta finca no está vinculada a Ixorigue.", code: "ranch_not_linked" }, { status: 409 });
+
   const [lots, animals] = await Promise.all([
     db.collection<LotDoc>("lots").find({ ranchId: ranch._id }).sort({ name: 1 }).toArray(),
     db.collection<AnimalDoc>("animals").find({ ranchId: ranch._id, lifeStatus: "alive" }).sort({ earTagNumber: 1 }).toArray(),
@@ -123,32 +128,47 @@ export async function GET(request: NextRequest) {
   const fromIso = new Date(slotStartUtcMs(startDate, 0)).toISOString();
   const toIso = new Date(slotStartUtcMs(endDate, 0) + 24 * 60 * 60 * 1000).toISOString();
 
-  let history: Awaited<ReturnType<typeof getAnimalsLocations>> = [];
-  if (ranch.ixorigueRanchId) {
-    try {
-      history = await getAnimalsLocations(ranch.ixorigueRanchId, fromIso, toIso);
-    } catch {
-      history = [];
-    }
+  let history: Awaited<ReturnType<typeof getAnimalsLocations>>;
+  try {
+    history = await getAnimalsLocations(ranch.ixorigueRanchId, fromIso, toIso);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const timeout = error instanceof Error && (error.name === "AbortError" || /timeout|timed out/i.test(message));
+    const credentials = /token|unauthorized|forbidden|\b401\b|\b403\b/i.test(message);
+    const code = timeout ? "ixorigue_timeout" : credentials ? "ixorigue_auth" : "ixorigue_unavailable";
+    console.error("[Device Health] Location query failed", { code });
+    return NextResponse.json({
+      error: timeout ? "Ixorigue ha tardado demasiado en responder. Vuelve a intentarlo."
+        : credentials ? "No se pudo autenticar la consulta con Ixorigue. Revisa la conexión en Configuración de Ixorigue."
+        : "No se han podido consultar las posiciones en Ixorigue. No se puede calcular la actividad de los dispositivos.",
+      code,
+    }, { status: timeout ? 504 : 502 });
   }
+  if (history.length && history.every((item) => !item.animalId)) {
+    return NextResponse.json({ error: "Ixorigue devolvió posiciones sin identificadores de animal reconocibles.", code: "ixorigue_response_format" }, { status: 502 });
+  }
+  const warnings: string[] = [];
+  let validPositionCount = 0;
 
   // Per Ixorigue animal: date -> set of half-hour slots that reported; last ping time.
-  const byIxId = new Map<string, { slotsByDate: Map<string, Set<number>>; lastPingAt: string | null }>();
+  const byIxId = new Map<string, { slotsByDate: Map<string, Set<number>>; lastPingAt: string | null; hasDevice: boolean }>();
   for (const h of history) {
     if (!h.animalId) continue;
     const slotsByDate = new Map<string, Set<number>>();
     let lastTs: string | null = null;
     for (const loc of h.locations) {
+      if (!Number.isFinite(new Date(loc.timestamp).getTime())) continue;
       const lp = localParts(loc.timestamp);
       if (lp.date < startDate || lp.date > endDate) continue;
+      validPositionCount++;
       (slotsByDate.get(lp.date) ?? slotsByDate.set(lp.date, new Set()).get(lp.date)!).add(lp.slot);
       if (!lastTs || loc.timestamp > lastTs) lastTs = loc.timestamp;
     }
-    byIxId.set(h.animalId, { slotsByDate, lastPingAt: lastTs });
+    byIxId.set(h.animalId, { slotsByDate, lastPingAt: lastTs, hasDevice: Boolean(h.deviceId || h.serialNumber || h.locations.length) });
   }
 
   // Battery / serial / disabled from the current animal list (one raw call).
-  const devByIxId = new Map<string, { battery: number | null; serial: string | null; disabled: boolean | null }>();
+  const devByIxId = new Map<string, { battery: number | null; serial: string | null; disabled: boolean | null; hasDevice: boolean }>();
   if (ranch.ixorigueRanchId) {
     try {
       const rawList = await ixorigueRawGet(`/api/Animals/${ranch.ixorigueRanchId}`);
@@ -163,13 +183,14 @@ export async function GET(request: NextRequest) {
         if (!ixId) continue;
         const dev = (src.device && typeof src.device === "object" ? src.device : {}) as Record<string, unknown>;
         devByIxId.set(ixId, {
+          hasDevice: Boolean(src.deviceId || Object.keys(dev).length),
           battery: typeof dev.battery === "number" ? dev.battery : null,
           serial: typeof dev.serialNumber === "string" ? dev.serialNumber : null,
           disabled: typeof dev.disabled === "boolean" ? dev.disabled : null,
         });
       }
     } catch {
-      // battery best-effort
+      warnings.push("No se pudo actualizar la batería y el número de serie desde Ixorigue. Los porcentajes usan las posiciones recibidas.");
     }
   }
 
@@ -181,8 +202,9 @@ export async function GET(request: NextRequest) {
 
   for (const animal of animals) {
     const ixId = animal.ixorigueAnimalId;
-    const hasDevice = !!(ranch.ixorigueRanchId && ixId);
     const hist = ixId ? byIxId.get(ixId) : undefined;
+    const dev = ixId ? devByIxId.get(ixId) : undefined;
+    const hasDevice = !!(ixId && (animal.deviceId || hist?.hasDevice || dev?.hasDevice));
 
     const days: DeviceHealthDay[] = dates.map((date) => {
       const expected = expectedByDate.get(date) ?? 0;
@@ -195,7 +217,6 @@ export async function GET(request: NextRequest) {
     const overallExpected = days.reduce((s, d) => s + d.expected, 0);
     const overallPct = hasDevice && overallExpected > 0 ? Math.round((overallPingCount / overallExpected) * 100) : 0;
 
-    const dev = ixId ? devByIxId.get(ixId) : undefined;
     const entry: DeviceHealthAnimal = {
       id: animal._id.toString(),
       earTagNumber: animal.earTagNumber,
@@ -236,5 +257,7 @@ export async function GET(request: NextRequest) {
     ranchId: ranch._id.toString(),
     ranchName: ranch.name,
     lots: result,
+    telemetry: { status: validPositionCount > 0 ? "ok" : "empty", receivedAnimals: history.length, positionCount: validPositionCount },
+    warnings,
   });
 }
