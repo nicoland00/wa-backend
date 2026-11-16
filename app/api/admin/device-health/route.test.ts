@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { ObjectId } from "mongodb";
 
-const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn(), locations: vi.fn(), raw: vi.fn() }));
-vi.mock("@/lib/server/auth", () => ({ requireSessionUser: mocks.user }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn(), locations: vi.fn(), raw: vi.fn(), rawLocations: vi.fn() }));
+vi.mock("@/lib/server/auth", () => ({ requireSessionUser: mocks.user, isAdmin: (user: { role: string }) => user.role === "admin" }));
 vi.mock("@/lib/mongodb", () => ({ getDb: mocks.db }));
-vi.mock("@/lib/ixorigue/client", () => ({ getAnimalsLocations: mocks.locations, ixorigueRawGet: mocks.raw }));
+vi.mock("@/lib/ixorigue/client", () => ({ getAnimalsLocations: mocks.locations, getAnimalsLocationsRaw: mocks.rawLocations, ixorigueRawGet: mocks.raw }));
 import { GET } from "./route";
 
 const ranchId = new ObjectId();
@@ -92,5 +92,33 @@ describe("device health source failures", () => {
     const response = await GET(request());
     expect(response.status).toBe(502);
     expect((await response.json()).code).toBe("ixorigue_response_format");
+  });
+});
+
+
+describe("original Ixorigue JSON inspection", () => {
+  function rawRequest() { return new NextRequest(`${request().url}&view=raw`); }
+  it("returns the original JSON and exact UTC range without applying the GPS parser", async () => {
+    const original = { data: [{ animalId: "remote-animal", locations: [{ timestamp: "2026-11-14T12:00:00Z", unexpectedShape: true }] }] };
+    mocks.rawLocations.mockResolvedValue(original);
+    const response = await GET(rawRequest());
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.response).toEqual(original);
+    expect(payload.query).toMatchObject({ fromDate: "2026-11-14T04:00:00.000Z", toDate: "2026-11-15T04:00:00.000Z", range: "day" });
+    expect(mocks.locations).not.toHaveBeenCalled();
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+  it("restricts original location JSON to authenticated administrators", async () => {
+    mocks.user.mockResolvedValue({ role: "institutional" });
+    expect((await GET(rawRequest())).status).toBe(403);
+    expect(mocks.db).not.toHaveBeenCalled();
+    mocks.user.mockResolvedValue(null);
+    expect((await GET(rawRequest())).status).toBe(401);
+    expect(mocks.rawLocations).not.toHaveBeenCalled();
+  });
+  it("shows upstream failures when requesting original JSON", async () => {
+    mocks.rawLocations.mockRejectedValue(new Error("Ixorigue 503 unavailable"));
+    expect((await GET(rawRequest())).status).toBe(502);
   });
 });

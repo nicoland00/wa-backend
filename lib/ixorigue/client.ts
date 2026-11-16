@@ -435,15 +435,25 @@ export type IxorigueAnimalLocationHistory = {
  * history over a date range. Dates must be UTC ISO. Omit animalId for all
  * animals in one call.
  */
+/** The exact location response, before mapping/filtering; for authenticated diagnostics. */
+export async function getAnimalsLocationsRaw(
+  ixorigueRanchId: string,
+  fromDateIso: string,
+  toDateIso: string,
+  ixorigueAnimalId?: string,
+): Promise<unknown> {
+  const params = new URLSearchParams({ fromDate: fromDateIso, toDate: toDateIso });
+  if (ixorigueAnimalId) params.set("animalId", ixorigueAnimalId);
+  return request<unknown>(`/api/Animals/${ixorigueRanchId}/animals-locations?${params.toString()}`);
+}
+
 export async function getAnimalsLocations(
   ixorigueRanchId: string,
   fromDateIso: string,
   toDateIso: string,
   ixorigueAnimalId?: string,
 ): Promise<IxorigueAnimalLocationHistory[]> {
-  const params = new URLSearchParams({ fromDate: fromDateIso, toDate: toDateIso });
-  if (ixorigueAnimalId) params.set("animalId", ixorigueAnimalId);
-  const payload = await request<unknown>(`/api/Animals/${ixorigueRanchId}/animals-locations?${params.toString()}`);
+  const payload = await getAnimalsLocationsRaw(ixorigueRanchId, fromDateIso, toDateIso, ixorigueAnimalId);
   if (!Array.isArray(payload) && !(payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data))) {
     throw new Error("Ixorigue locations response has an unrecognized format");
   }

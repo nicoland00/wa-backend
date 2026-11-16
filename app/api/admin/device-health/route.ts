@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 import { canViewAdminScreens } from "@/lib/permissions";
-import { requireSessionUser } from "@/lib/server/auth";
-import { getAnimalsLocations, ixorigueRawGet } from "@/lib/ixorigue/client";
+import { isAdmin, requireSessionUser } from "@/lib/server/auth";
+import { getAnimalsLocations, getAnimalsLocationsRaw, ixorigueRawGet } from "@/lib/ixorigue/client";
 import { objectIdSchema } from "@/lib/validators/common";
 import { ObjectId } from "mongodb";
 import type { AnimalDoc, LotDoc, RanchDoc } from "@/lib/db/types";
@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
   if (!canViewAdminScreens(actor)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
+  const rawView = searchParams.get("view") === "raw";
+  if (rawView && !isAdmin(actor)) return NextResponse.json({ error: "Solo los administradores pueden consultar el JSON original." }, { status: 403 });
   const parsedRanchId = objectIdSchema.safeParse(searchParams.get("ranchId"));
   if (!parsedRanchId.success) return NextResponse.json({ error: "Invalid ranchId" }, { status: 400 });
 
@@ -130,6 +132,13 @@ export async function GET(request: NextRequest) {
 
   let history: Awaited<ReturnType<typeof getAnimalsLocations>>;
   try {
+    if (rawView) {
+      const payload = await getAnimalsLocationsRaw(ranch.ixorigueRanchId, fromIso, toIso);
+      return NextResponse.json({
+        query: { ranchId: ranch._id.toString(), ixorigueRanchId: ranch.ixorigueRanchId, range: mode, startDate, endDate, fromDate: fromIso, toDate: toIso, timezone: "UTC-04:00", requestedAt: new Date().toISOString() },
+        response: payload,
+      }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     history = await getAnimalsLocations(ranch.ixorigueRanchId, fromIso, toIso);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";

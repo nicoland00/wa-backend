@@ -182,6 +182,39 @@ export default function DeviceHealthPage() {
   const requestIdRef = useRef(0);
   const [expandedLots, setExpandedLots] = useState<Set<string>>(new Set());
 
+  const [jsonView, setJsonView] = useState<{ text: string; filename: string } | null>(null);
+  const [jsonLoading, setJsonLoading] = useState(false);
+  const [jsonError, setJsonError] = useState("");
+  const jsonRequestRef = useRef(0);
+
+  useEffect(() => {
+    jsonRequestRef.current++;
+    setJsonView(null); setJsonError(""); setJsonLoading(false);
+  }, [selectedRanchId, mode, endDate]);
+
+  async function loadRawJson() {
+    if (!selectedRanchId) return;
+    const requestId = ++jsonRequestRef.current;
+    setJsonLoading(true); setJsonError("");
+    try {
+      const params = new URLSearchParams({ ranchId: selectedRanchId, range: mode, end: endDate, view: "raw" });
+      const response = await fetch(`/api/admin/device-health?${params}`, { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No se pudo consultar el JSON de Ixorigue.");
+      if (requestId === jsonRequestRef.current) setJsonView({ text: JSON.stringify(payload, null, 2), filename: `ixorigue-${selectedRanchId}-${mode}-${endDate}.json` });
+    } catch (cause) {
+      if (requestId === jsonRequestRef.current) { setJsonView(null); setJsonError(cause instanceof Error ? cause.message : "No se pudo consultar el JSON."); }
+    } finally { if (requestId === jsonRequestRef.current) setJsonLoading(false); }
+  }
+
+  function downloadJson() {
+    if (!jsonView) return;
+    const url = URL.createObjectURL(new Blob([jsonView.text], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = jsonView.filename;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   const today = ranchLocalDate(new Date());
   const span = mode === "month" ? 30 : mode === "week" ? 7 : 1;
 
@@ -300,11 +333,23 @@ export default function DeviceHealthPage() {
           </div>
         </div>
 
+        {session?.user.role === "admin" ? <div className="space-y-3">
+          <button type="button" disabled={!selectedRanchId || jsonLoading} onClick={() => void loadRawJson()} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{jsonLoading ? "Consultando JSON…" : jsonView ? "Actualizar JSON de Ixorigue" : "Ver JSON de Ixorigue"}</button>
+          {jsonError ? <p role="alert" className="text-sm text-red-700">{jsonError}</p> : null}
+          {jsonView ? <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-label="Respuesta JSON original de Ixorigue">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
+              <div><h2 className="text-sm font-semibold text-slate-800">JSON original de Ixorigue</h2><p className="mt-1 text-xs text-slate-500">Respuesta sin procesar del periodo seleccionado y fechas enviadas en UTC.</p></div>
+              <div className="flex gap-3"><button type="button" onClick={downloadJson} className="text-xs font-medium text-[#31574b] underline">Descargar JSON</button><button type="button" onClick={() => setJsonView(null)} className="text-xs text-slate-500">Cerrar</button></div>
+            </div>
+            <pre tabIndex={0} className="max-h-80 overflow-auto bg-slate-950 p-4 text-[11px] leading-relaxed text-slate-200">{jsonView.text}</pre>
+          </section> : null}
+        </div> : null}
+
         {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           <p>{error}</p>
           {selectedRanchId ? <button type="button" disabled={loading} onClick={() => void loadData(selectedRanchId, mode, endDate)} className="font-medium underline disabled:opacity-50">Reintentar</button> : null}
         </div> : null}
-        {data?.telemetry?.status === "empty" && !loading ? <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Ixorigue ha respondido, pero no ha devuelto posiciones válidas para el periodo seleccionado. El 0 % indica ausencia de posiciones en esa consulta. Prueba un día anterior o el rango semanal.</p> : null}
+        {data?.telemetry?.status === "empty" && !loading ? <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">La consulta a Ixorigue se completó, pero no se encontraron posiciones válidas al procesar el periodo seleccionado. Prueba un día anterior o el rango semanal.{session?.user.role === "admin" ? " Puedes comprobar la respuesta original con «Ver JSON de Ixorigue»." : ""}</p> : null}
         {!loading ? data?.warnings?.map((warning) => <p key={warning} role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{warning}</p>) : null}
 
         {/* Fleet summary */}
